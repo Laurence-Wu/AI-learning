@@ -1,0 +1,22 @@
+
+so the idea for triton is that it makes parallel processing blockalized. I think it has the advantages of combining the matrix multiplications and parallelism. So every program has to be designed in this philosophy.
+
+here is my systematic theory
+
+structural advantages:
+1. combinations of both optimization
+2. C++ fashion more control
+
+features:
+how does GPU works from the moment the trition program runs to the moment it finishes
+
+triton will compile the file into PTX(virtual machine instruction set architecture) then it will generate binary code base on the PTX assembly and cubin binary.
+
+The compilation stages: Triton IR, Triton GPU IR, LLVM IR, PTX and finally cubnin binary .
+GPU memory hiearchy consists of global memory, L1 / L2 caches, shared memory,registers and specialized memories
+
+Pytorch, Numpy and triton will do the broadcasting for tensor add or minus with scalar
+
+
+
+
