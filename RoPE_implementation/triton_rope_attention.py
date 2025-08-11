@@ -84,11 +84,13 @@ def _rope_attention_fwd_kernel(
     # Position indices for Q block
     pos_m = offs_m
     
-    # Frequency computation using exp and log instead of pow
+    # Frequency computation with better numerical stability
     freq_idx = offs_d // 2
+    # Use stable computation for theta^(-2i/d)
+    dim_factor = freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL
+    # More stable: exp(-log(theta) * factor) for 1/theta^factor
     log_theta = tl.log(theta)
-    exponent = freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL
-    inv_freq = 1.0 / tl.exp(log_theta * exponent)
+    inv_freq = tl.exp(-log_theta * dim_factor)
     
     # Apply RoPE rotation to Q
     angle_m = pos_m[:, None].to(tl.float32) * inv_freq[None, :]
@@ -157,11 +159,18 @@ def _rope_attention_fwd_kernel(
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
         V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
     
-    # Finalize output with numerical stability check
-    l_i_safe = tl.maximum(l_i, 1e-8)  # Prevent division by zero
+    # Finalize output with improved numerical stability
+    # Use larger epsilon and add gradient-friendly clipping
+    l_i_safe = tl.maximum(l_i, 1e-6)  # Larger epsilon for stability
+    # Clip the denominator to prevent extreme values
+    l_i_safe = tl.minimum(l_i_safe, 1e6)
     acc = acc / l_i_safe[:, None]
+    
+    # Store log-sum-exp with clamping to prevent overflow
+    log_sum = m_i + tl.log2(l_i_safe)
+    log_sum = tl.minimum(tl.maximum(log_sum, -100.0), 100.0)  # Clamp to reasonable range
     l_ptrs = L + off_hz * N_CTX + offs_m
-    tl.store(l_ptrs, m_i + tl.log2(l_i_safe))
+    tl.store(l_ptrs, log_sum)
     
     # Write output
     O_block_ptr = tl.make_block_ptr(
@@ -378,14 +387,16 @@ class RoPEAttention(torch.autograd.Function):
 
 
 def apply_rope(x, position_ids):
-    """Apply RoPE to input tensor"""
+    """Apply RoPE to input tensor with improved numerical stability"""
     batch_size, num_heads, seq_len, head_dim = x.shape
     
-    # Create frequency tensor
+    # Create frequency tensor with stable computation
     theta = 10000.0
     dim_half = head_dim // 2
     freq_idx = torch.arange(0, dim_half, dtype=torch.float32, device=x.device)
-    inv_freq = 1.0 / (theta ** (freq_idx * 2.0 / head_dim))
+    # More stable computation: exp(-log(theta) * exponent)
+    exponent = freq_idx * 2.0 / head_dim
+    inv_freq = torch.exp(-math.log(theta) * exponent)
     
     # Compute position-dependent angles
     if position_ids is None:

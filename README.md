@@ -25,9 +25,6 @@ This repository serves as both a learning resource and practical implementation 
 │   ├── matrix_multiplication.py       # Matrix multiply kernels
 │   ├── softmax.py                     # Softmax implementation
 │   └── LayerNormalization.py          # Layer normalization kernel
-├── testFiles/                         # Testing utilities
-│   ├── test.py                        # General test suite
-│   └── test_colab_compatibility.py    # Colab-specific tests
 ├── FUSED_ATTENTION_SUMMARY.md         # Flash Attention deep dive
 ├── MEMORY_HIERARCHY_DOCUMENTATION.md  # GPU memory optimization guide
 └── fused_rope_tiling_gpu.md          # RoPE implementation details

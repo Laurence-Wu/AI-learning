@@ -294,15 +294,35 @@ class Trainer:
         return self.history
 
 
+def smooth_data(data, window=5):
+    """Apply moving average smoothing to reduce noise in plots"""
+    if len(data) < window:
+        return data
+    smoothed = []
+    for i in range(len(data)):
+        start = max(0, i - window // 2)
+        end = min(len(data), i + window // 2 + 1)
+        smoothed.append(np.mean(data[start:end]))
+    return smoothed
+
 def plot_comparison(standard_history: Dict, rope_history: Dict, save_path: str = "bert_comparison.png"):
-    """Plot comparison graphs"""
+    """Plot comparison graphs with smoothing for clarity"""
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
-    # Training MLM Loss
+    # Training MLM Loss with smoothing
+    # Plot raw data with low alpha
     axes[0, 0].plot(standard_history["steps"], standard_history["train_mlm_loss"], 
-                    label="Standard Attention", color="blue", alpha=0.7)
+                    color="blue", alpha=0.2, linewidth=0.5)
     axes[0, 0].plot(rope_history["steps"], rope_history["train_mlm_loss"], 
-                    label="RoPE Attention", color="red", alpha=0.7)
+                    color="red", alpha=0.2, linewidth=0.5)
+    
+    # Plot smoothed data on top
+    smoothed_standard = smooth_data(standard_history["train_mlm_loss"], window=10)
+    smoothed_rope = smooth_data(rope_history["train_mlm_loss"], window=10)
+    axes[0, 0].plot(standard_history["steps"][:len(smoothed_standard)], smoothed_standard, 
+                    label="Standard Attention (smoothed)", color="blue", alpha=0.9, linewidth=2)
+    axes[0, 0].plot(rope_history["steps"][:len(smoothed_rope)], smoothed_rope, 
+                    label="RoPE Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
     axes[0, 0].set_xlabel("Training Steps (K)", fontsize=12)
     axes[0, 0].set_ylabel("MLM Loss", fontsize=12)
     axes[0, 0].set_title("Training MLM Loss Comparison", fontsize=14)
@@ -344,11 +364,20 @@ def plot_comparison(standard_history: Dict, rope_history: Dict, save_path: str =
     axes[0, 1].legend()
     axes[0, 1].grid(True, alpha=0.3)
     
-    # Language Modeling Loss (same as MLM for BERT)
+    # Language Modeling Loss (same as MLM for BERT) with smoothing
+    # Plot raw data with low alpha
     axes[1, 0].plot(standard_history["steps"], standard_history["train_loss"], 
-                    label="Standard Attention", color="blue", alpha=0.7)
+                    color="blue", alpha=0.2, linewidth=0.5)
     axes[1, 0].plot(rope_history["steps"], rope_history["train_loss"], 
-                    label="RoPE Attention", color="red", alpha=0.7)
+                    color="red", alpha=0.2, linewidth=0.5)
+    
+    # Plot smoothed data on top
+    smoothed_standard_lm = smooth_data(standard_history["train_loss"], window=10)
+    smoothed_rope_lm = smooth_data(rope_history["train_loss"], window=10)
+    axes[1, 0].plot(standard_history["steps"][:len(smoothed_standard_lm)], smoothed_standard_lm, 
+                    label="Standard Attention (smoothed)", color="blue", alpha=0.9, linewidth=2)
+    axes[1, 0].plot(rope_history["steps"][:len(smoothed_rope_lm)], smoothed_rope_lm, 
+                    label="RoPE Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
     axes[1, 0].set_xlabel("Training Steps (K)", fontsize=12)
     axes[1, 0].set_ylabel("LM Loss", fontsize=12)
     axes[1, 0].set_title("Training LM Loss Comparison", fontsize=14)
