@@ -1,12 +1,30 @@
+# Core dependencies for ML and computation
 numpy<2.0.0
-matplotlib>=3.5.0
 torch>=2.0.0
 triton>=2.0.0
-gymnasium>=0.26.0
-tqdm>=4.64.0
+
+# For BERT and RoPE implementations
+transformers>=4.30.0
+tensorflow>=2.13.0
+
+# Visualization and plotting
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Experiment tracking and configuration
+wandb>=0.15.0  # Optional: for experiment tracking
+python-dotenv>=1.0.0  # For loading environment variables
+
+# Development and notebooks
 jupyter>=1.0.0
 notebook>=6.4.0
-scipy>=1.9.0
+ipython>=8.0.0
+
+# Data processing and utilities
 pandas>=1.5.0
-seaborn>=0.11.0
-pillow>=9.0.0 
+scipy>=1.9.0
+tqdm>=4.64.0
+
+# Additional libraries
+gymnasium>=0.26.0  # For reinforcement learning experiments
+pillow>=9.0.0  # For image processing 
