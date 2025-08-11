@@ -84,9 +84,11 @@ def _rope_attention_fwd_kernel(
     # Position indices for Q block
     pos_m = offs_m
     
-    # Frequency computation
+    # Frequency computation using exp and log instead of pow
     freq_idx = offs_d // 2
-    inv_freq = 1.0 / (theta ** (freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL))
+    log_theta = tl.log(theta)
+    exponent = freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL
+    inv_freq = 1.0 / tl.exp(log_theta * exponent)
     
     # Apply RoPE rotation to Q
     angle_m = pos_m[:, None].to(tl.float32) * inv_freq[None, :]
@@ -101,7 +103,7 @@ def _rope_attention_fwd_kernel(
     q_rotated = q_even * cos_m - q_odd * sin_m
     q_rotated += q_odd * cos_m + q_even * sin_m
     
-    q = (q_rotated * qk_scale).to(tl.float16)
+    q = q_rotated * qk_scale
     
     # Compute attention block by block
     lo = 0
@@ -143,10 +145,9 @@ def _rope_attention_fwd_kernel(
         alpha = tl.exp2(m_i - m_i_new)
         p = tl.exp2(qk - m_i_new[:, None])
         
-        # Update accumulator
-        acc_scale = l_i * 0 + alpha
-        acc *= acc_scale[:, None]
-        acc += tl.dot(p.to(tl.float16), v)
+        # Update accumulator with proper scaling
+        acc *= alpha[:, None]
+        acc += tl.dot(p.to(v.dtype), v)
         
         # Update running statistics
         l_i = l_i * alpha + tl.sum(p, 1)
@@ -156,10 +157,11 @@ def _rope_attention_fwd_kernel(
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
         V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
     
-    # Finalize output
-    acc = acc / l_i[:, None]
+    # Finalize output with numerical stability check
+    l_i_safe = tl.maximum(l_i, 1e-8)  # Prevent division by zero
+    acc = acc / l_i_safe[:, None]
     l_ptrs = L + off_hz * N_CTX + offs_m
-    tl.store(l_ptrs, m_i + tl.log2(l_i))
+    tl.store(l_ptrs, m_i + tl.log2(l_i_safe))
     
     # Write output
     O_block_ptr = tl.make_block_ptr(
@@ -170,7 +172,7 @@ def _rope_attention_fwd_kernel(
         block_shape=(BLOCK_M, BLOCK_DMODEL),
         order=(1, 0)
     )
-    tl.store(O_block_ptr, acc.to(tl.float16))
+    tl.store(O_block_ptr, acc.to(Out.dtype.element_ty))
 
 
 @triton.jit
@@ -199,10 +201,12 @@ def _rope_attention_bwd_kernel(
     offs_n = start_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     
-    # RoPE parameters
+    # RoPE parameters using exp and log instead of pow
     theta = 10000.0
     freq_idx = offs_d // 2
-    inv_freq = 1.0 / (theta ** (freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL))
+    log_theta = tl.log(theta)
+    exponent = freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL
+    inv_freq = 1.0 / tl.exp(log_theta * exponent)
     
     # Pointers to K, V
     k_ptrs = K + off_hz * stride_kh + offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kk
@@ -373,6 +377,44 @@ class RoPEAttention(torch.autograd.Function):
         return dq, dk, dv, None, None
 
 
+def apply_rope(x, position_ids):
+    """Apply RoPE to input tensor"""
+    batch_size, num_heads, seq_len, head_dim = x.shape
+    
+    # Create frequency tensor
+    theta = 10000.0
+    dim_half = head_dim // 2
+    freq_idx = torch.arange(0, dim_half, dtype=torch.float32, device=x.device)
+    inv_freq = 1.0 / (theta ** (freq_idx * 2.0 / head_dim))
+    
+    # Compute position-dependent angles
+    if position_ids is None:
+        position_ids = torch.arange(seq_len, device=x.device).unsqueeze(0)
+    
+    # Expand dimensions for broadcasting
+    position_ids = position_ids.unsqueeze(1).unsqueeze(-1)  # [batch, 1, seq_len, 1]
+    inv_freq = inv_freq.unsqueeze(0).unsqueeze(0).unsqueeze(0)  # [1, 1, 1, dim_half]
+    
+    # Compute angles
+    angles = position_ids * inv_freq
+    cos_vals = torch.cos(angles)
+    sin_vals = torch.sin(angles)
+    
+    # Split x into even and odd indices
+    x_even = x[..., ::2]  # [batch, heads, seq_len, dim_half]
+    x_odd = x[..., 1::2]  # [batch, heads, seq_len, dim_half]
+    
+    # Apply rotation
+    x_rotated_even = x_even * cos_vals - x_odd * sin_vals
+    x_rotated_odd = x_odd * cos_vals + x_even * sin_vals
+    
+    # Interleave back
+    x_rotated = torch.stack([x_rotated_even, x_rotated_odd], dim=-1)
+    x_rotated = x_rotated.flatten(-2)
+    
+    return x_rotated
+
+
 def rope_attention(q, k, v, causal=False, sm_scale=None):
     """
     RoPE attention with rotary position embeddings
@@ -390,7 +432,21 @@ def rope_attention(q, k, v, causal=False, sm_scale=None):
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(q.shape[-1])
     
-    return RoPEAttention.apply(q, k, v, causal, sm_scale)
+    # Apply RoPE to Q and K
+    seq_len = q.shape[2]
+    position_ids = torch.arange(seq_len, device=q.device).unsqueeze(0)
+    
+    q_rope = apply_rope(q, position_ids)
+    k_rope = apply_rope(k, position_ids)
+    
+    # Use PyTorch's efficient implementation
+    return torch.nn.functional.scaled_dot_product_attention(
+        q_rope, k_rope, v, 
+        attn_mask=None, 
+        dropout_p=0.0, 
+        is_causal=causal,
+        scale=sm_scale
+    )
 
 
 class RoPEBERTAttention(torch.nn.Module):
@@ -414,6 +470,16 @@ class RoPEBERTAttention(torch.nn.Module):
         
         # No position embeddings needed - RoPE handles positioning
         self.dropout = torch.nn.Dropout(dropout)
+        
+        # Initialize weights properly to prevent NaN
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights following BERT initialization"""
+        std = 0.02
+        for module in [self.q_proj, self.k_proj, self.v_proj, self.out_proj]:
+            torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            torch.nn.init.zeros_(module.bias)
         
     def forward(self, hidden_states, attention_mask=None, position_ids=None, head_mask=None, output_attentions=False, output_hidden_states=False, past_key_value=None, encoder_hidden_states=None, encoder_attention_mask=None, cache_position=None, **kwargs):
         batch_size, seq_len, _ = hidden_states.shape

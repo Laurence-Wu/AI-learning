@@ -18,26 +18,27 @@ from typing import Dict, List, Tuple
 from dataclasses import dataclass
 import wandb  # Optional: for experiment tracking
 
-# Import our Triton attention implementations
+# Import our configuration and attention implementations
+from bert_config import BERTComparisonConfig
 from triton_standard_attention import StandardBERTAttention
 from triton_rope_attention import RoPEBERTAttention
 
 
 @dataclass
 class TrainingConfig:
-    """Training configuration"""
+    """Legacy training configuration - use BERTComparisonConfig instead"""
     model_type: str  # "standard" or "rope"
     batch_size: int = 32
-    learning_rate: float = 1e-4
-    num_epochs: int = 10
+    learning_rate: float = 5e-5
+    num_epochs: int = 50
     max_seq_length: int = 512
     mlm_probability: float = 0.15
-    warmup_steps: int = 1000
-    logging_steps: int = 100
-    eval_steps: int = 500
+    warmup_steps: int = 50
+    logging_steps: int = 10
+    eval_steps: int = 50
     save_steps: int = 1000
     gradient_accumulation_steps: int = 4
-    fp16: bool = True
+    fp16: bool = False
     seed: int = 42
     output_dir: str = "./bert_comparison_outputs"
 
@@ -117,9 +118,12 @@ class ModifiedBERTModel(nn.Module):
         
     def _replace_attention_layers(self):
         """Replace all attention layers with Triton implementations"""
+        print(f"Replacing {self.config.num_hidden_layers} attention layers with {self.attention_type} attention...")
+        
         for layer_idx in range(self.config.num_hidden_layers):
             # Get the attention layer
             layer = self.bert.bert.encoder.layer[layer_idx]
+            original_attention = layer.attention.self
             
             # Choose attention implementation
             if self.attention_type == "rope":
@@ -139,6 +143,7 @@ class ModifiedBERTModel(nn.Module):
             
             # Replace the self-attention
             layer.attention.self = new_attention
+            print(f"  Layer {layer_idx}: {type(original_attention).__name__} -> {type(new_attention).__name__}")
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         return self.bert(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
@@ -176,6 +181,11 @@ class Trainer:
         
         # Setup device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Clear GPU cache before moving model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
         self.model.to(self.device)
         
         # Mixed precision training
@@ -196,6 +206,14 @@ class Trainer:
             with torch.amp.autocast('cuda', enabled=self.config.fp16):
                 outputs = self.model(**batch)
                 loss = outputs.loss / self.config.gradient_accumulation_steps
+                
+            # Check for NaN/inf in loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"Warning: NaN/Inf loss detected at step {self.global_step}")
+                print(f"Loss value: {loss.item()}")
+                print(f"Outputs loss: {outputs.loss.item()}")
+                # Skip this batch
+                continue
             
             # Backward pass
             if self.scaler:
@@ -206,9 +224,14 @@ class Trainer:
             # Gradient accumulation
             if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
                 if self.scaler:
+                    # Gradient clipping before optimizer step
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     self.optimizer.step()
                 
                 self.scheduler.step()
@@ -262,6 +285,11 @@ class Trainer:
             print(f"\nEpoch {epoch + 1}/{self.config.num_epochs}")
             avg_loss = self.train_epoch()
             print(f"Average training loss: {avg_loss:.4f}")
+            
+            # Evaluate periodically
+            if epoch % max(1, self.config.num_epochs // 5) == 0 or epoch == self.config.num_epochs - 1:
+                eval_loss = self.evaluate()
+                print(f"Evaluation loss: {eval_loss:.4f}")
         
         return self.history
 
@@ -281,16 +309,35 @@ def plot_comparison(standard_history: Dict, rope_history: Dict, save_path: str =
     axes[0, 0].legend()
     axes[0, 0].grid(True, alpha=0.3)
     
-    # Evaluation MLM Loss
-    eval_steps_standard = [s for i, s in enumerate(standard_history["steps"]) 
-                          if i % (standard_history["steps"][-1] // len(standard_history["eval_mlm_loss"])) == 0][:len(standard_history["eval_mlm_loss"])]
-    eval_steps_rope = [s for i, s in enumerate(rope_history["steps"]) 
-                       if i % (rope_history["steps"][-1] // len(rope_history["eval_mlm_loss"])) == 0][:len(rope_history["eval_mlm_loss"])]
+    # Evaluation MLM Loss - with safety checks and proper step alignment
+    if len(standard_history["eval_mlm_loss"]) > 0 and len(standard_history["steps"]) > 0:
+        # Create evaluation steps based on eval_steps interval from config
+        num_evals = len(standard_history["eval_mlm_loss"])
+        if num_evals > 0:
+            # Calculate actual evaluation steps
+            total_steps = standard_history["steps"][-1] if standard_history["steps"] else 0
+            eval_interval = max(1, total_steps // max(1, num_evals))
+            eval_steps_standard = [eval_interval * (i + 1) for i in range(num_evals)]
+            # Ensure we don't exceed available data
+            eval_steps_standard = eval_steps_standard[:len(standard_history["eval_mlm_loss"])]
+            
+            axes[0, 1].plot(eval_steps_standard, standard_history["eval_mlm_loss"][:len(eval_steps_standard)], 
+                            label="Standard Attention", color="blue", marker="o", alpha=0.7)
     
-    axes[0, 1].plot(eval_steps_standard, standard_history["eval_mlm_loss"], 
-                    label="Standard Attention", color="blue", marker="o", alpha=0.7)
-    axes[0, 1].plot(eval_steps_rope, rope_history["eval_mlm_loss"], 
-                    label="RoPE Attention", color="red", marker="s", alpha=0.7)
+    if len(rope_history["eval_mlm_loss"]) > 0 and len(rope_history["steps"]) > 0:
+        # Create evaluation steps based on eval_steps interval from config
+        num_evals = len(rope_history["eval_mlm_loss"])
+        if num_evals > 0:
+            # Calculate actual evaluation steps
+            total_steps = rope_history["steps"][-1] if rope_history["steps"] else 0
+            eval_interval = max(1, total_steps // max(1, num_evals))
+            eval_steps_rope = [eval_interval * (i + 1) for i in range(num_evals)]
+            # Ensure we don't exceed available data
+            eval_steps_rope = eval_steps_rope[:len(rope_history["eval_mlm_loss"])]
+            
+            axes[0, 1].plot(eval_steps_rope, rope_history["eval_mlm_loss"][:len(eval_steps_rope)], 
+                            label="RoPE Attention", color="red", marker="s", alpha=0.7)
+    
     axes[0, 1].set_xlabel("Training Steps (K)", fontsize=12)
     axes[0, 1].set_ylabel("MLM Loss", fontsize=12)
     axes[0, 1].set_title("Evaluation MLM Loss Comparison", fontsize=14)
@@ -324,86 +371,159 @@ def plot_comparison(standard_history: Dict, rope_history: Dict, save_path: str =
     print(f"Comparison plot saved to {save_path}")
 
 
+def load_training_data(file_path: str):
+    """Load training texts from file"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            texts = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(texts)} training texts from {file_path}")
+        return texts
+    except FileNotFoundError:
+        print(f"Warning: {file_path} not found. Using minimal fallback dataset.")
+        return [
+            "The quick brown fox jumps over the lazy dog.",
+            "Machine learning is a subset of artificial intelligence.",
+            "Transformers have revolutionized natural language processing."
+        ] * 100
+
+
 def main():
-    """Main training script"""
+    """Main training script with configuration management"""
+    # Load configuration from environment file
+    config = BERTComparisonConfig.from_env("config.env")
+    config.print_config()
+    
     # Set random seeds
-    torch.manual_seed(42)
-    np.random.seed(42)
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
     
-    # Load tokenizer
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    # Create output directory
+    os.makedirs(config.output_dir, exist_ok=True)
     
-    # Create sample dataset (replace with your actual data)
-    sample_texts = [
-        "The quick brown fox jumps over the lazy dog.",
-        "Machine learning is a subset of artificial intelligence.",
-        "Transformers have revolutionized natural language processing.",
-        # Add more texts here
-    ] * 1000  # Replicate for demonstration
+    # Load tokenizer (try local first, then remote)
+    tokenizer_dir = "./local_tokenizer"
+    if os.path.exists(tokenizer_dir):
+        print("Loading tokenizer from local directory...")
+        tokenizer = BertTokenizer.from_pretrained(tokenizer_dir)
+    else:
+        print("Local tokenizer not found. Downloading from Hugging Face...")
+        print("(Run setup_tokenizer.py first to avoid internet dependency)")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     
-    # Create datasets
-    train_dataset = BERTDataset(sample_texts[:800], tokenizer)
-    eval_dataset = BERTDataset(sample_texts[800:], tokenizer)
+    # Load training data
+    sample_texts = load_training_data(config.training_data_file)
     
-    # Create dataloaders with smaller batch size for 8GB GPU
-    train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-    eval_dataloader = DataLoader(eval_dataset, batch_size=4, shuffle=False)
+    # Create datasets with proper train/eval split
+    split_idx = int(config.train_split * len(sample_texts))
+    train_texts = sample_texts[:split_idx]
+    eval_texts = sample_texts[split_idx:]
     
-    # BERT configuration - smaller model for 8GB GPU
-    bert_config = BertConfig(
-        vocab_size=tokenizer.vocab_size,
-        hidden_size=384,  # Reduced from 768
-        num_hidden_layers=6,  # Reduced from 12
-        num_attention_heads=6,  # Reduced from 12
-        intermediate_size=1536,  # Reduced from 3072
-        max_position_embeddings=256,  # Reduced from 512
-    )
+    print(f"Training on {len(train_texts)} texts, evaluating on {len(eval_texts)} texts")
+    
+    train_dataset = BERTDataset(train_texts, tokenizer, config.max_seq_length, config.mlm_probability)
+    eval_dataset = BERTDataset(eval_texts, tokenizer, config.max_seq_length, config.mlm_probability)
+    
+    # Create dataloaders
+    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=config.batch_size, shuffle=False)
+    
+    # BERT configuration from config
+    bert_config = BertConfig(**config.get_bert_config_dict())
     
     # Train standard attention model
     print("=" * 50)
     print("Training Standard Attention BERT")
     print("=" * 50)
     
-    standard_config = TrainingConfig(model_type="standard", num_epochs=5)
+    # Create training config for standard attention from main config
+    standard_config = TrainingConfig(
+        model_type="standard", 
+        batch_size=config.batch_size,
+        learning_rate=config.learning_rate,
+        num_epochs=config.num_epochs,
+        max_seq_length=config.max_seq_length,
+        mlm_probability=config.mlm_probability,
+        warmup_steps=config.warmup_steps,
+        logging_steps=config.logging_steps,
+        eval_steps=config.eval_steps,
+        save_steps=config.save_steps,
+        gradient_accumulation_steps=config.gradient_accumulation_steps,
+        fp16=config.fp16,
+        seed=config.seed,
+        output_dir=config.output_dir
+    )
+    
     standard_model = ModifiedBERTModel(bert_config, attention_type="standard")
     standard_trainer = Trainer(standard_model, train_dataloader, eval_dataloader, standard_config)
     standard_history = standard_trainer.train()
     
     # Save standard model
-    torch.save(standard_model.state_dict(), "bert_standard_attention.pt")
+    torch.save(standard_model.state_dict(), config.standard_model_save_path)
+    
+    # Clear GPU memory before training RoPE model
+    del standard_model
+    del standard_trainer
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print("GPU memory cleared between models")
     
     # Train RoPE attention model
     print("\n" + "=" * 50)
     print("Training RoPE Attention BERT")
     print("=" * 50)
     
-    rope_config = TrainingConfig(model_type="rope", num_epochs=5)
+    # Create training config for RoPE attention from main config
+    rope_config = TrainingConfig(
+        model_type="rope",
+        batch_size=config.batch_size,
+        learning_rate=config.learning_rate,
+        num_epochs=config.num_epochs,
+        max_seq_length=config.max_seq_length,
+        mlm_probability=config.mlm_probability,
+        warmup_steps=config.warmup_steps,
+        logging_steps=config.logging_steps,
+        eval_steps=config.eval_steps,
+        save_steps=config.save_steps,
+        gradient_accumulation_steps=config.gradient_accumulation_steps,
+        fp16=config.fp16,
+        seed=config.seed,
+        output_dir=config.output_dir
+    )
+    
     rope_model = ModifiedBERTModel(bert_config, attention_type="rope")
     rope_trainer = Trainer(rope_model, train_dataloader, eval_dataloader, rope_config)
     rope_history = rope_trainer.train()
     
     # Save RoPE model
-    torch.save(rope_model.state_dict(), "bert_rope_attention.pt")
+    torch.save(rope_model.state_dict(), config.rope_model_save_path)
     
     # Plot comparison
-    plot_comparison(standard_history, rope_history)
+    plot_comparison(standard_history, rope_history, config.plot_save_path)
     
-    # Print final comparison
+    # Print final comparison with safety checks
     print("\n" + "=" * 50)
     print("Final Comparison")
     print("=" * 50)
-    print(f"Standard Attention - Final Train Loss: {standard_history['train_loss'][-1]:.4f}")
-    print(f"Standard Attention - Final Eval Loss: {standard_history['eval_loss'][-1]:.4f}")
-    print(f"RoPE Attention - Final Train Loss: {rope_history['train_loss'][-1]:.4f}")
-    print(f"RoPE Attention - Final Eval Loss: {rope_history['eval_loss'][-1]:.4f}")
     
-    # Calculate improvement
-    train_improvement = (standard_history['train_loss'][-1] - rope_history['train_loss'][-1]) / standard_history['train_loss'][-1] * 100
-    eval_improvement = (standard_history['eval_loss'][-1] - rope_history['eval_loss'][-1]) / standard_history['eval_loss'][-1] * 100
-    
-    print(f"\nRoPE vs Standard:")
-    print(f"Training Loss Improvement: {train_improvement:.2f}%")
-    print(f"Evaluation Loss Improvement: {eval_improvement:.2f}%")
+    if len(standard_history['train_loss']) > 0 and len(rope_history['train_loss']) > 0:
+        print(f"Standard Attention - Final Train Loss: {standard_history['train_loss'][-1]:.4f}")
+        print(f"RoPE Attention - Final Train Loss: {rope_history['train_loss'][-1]:.4f}")
+        
+        if len(standard_history['eval_loss']) > 0 and len(rope_history['eval_loss']) > 0:
+            print(f"Standard Attention - Final Eval Loss: {standard_history['eval_loss'][-1]:.4f}")
+            print(f"RoPE Attention - Final Eval Loss: {rope_history['eval_loss'][-1]:.4f}")
+            
+            # Calculate improvement
+            train_improvement = (standard_history['train_loss'][-1] - rope_history['train_loss'][-1]) / standard_history['train_loss'][-1] * 100
+            eval_improvement = (standard_history['eval_loss'][-1] - rope_history['eval_loss'][-1]) / standard_history['eval_loss'][-1] * 100
+            
+            print(f"\nRoPE vs Standard:")
+            print(f"Training Loss Improvement: {train_improvement:.2f}%")
+            print(f"Evaluation Loss Improvement: {eval_improvement:.2f}%")
+        else:
+            print("Warning: No evaluation loss data available for comparison")
+    else:
+        print("Warning: No training data available for comparison")
 
 
 if __name__ == "__main__":
