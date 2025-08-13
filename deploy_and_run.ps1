@@ -84,7 +84,7 @@ else
         ls -la ~/Coding/ | head -10
     fi
     echo "In home directory:"
-    ls -la ~/ | grep -E "^d.*[Cc]oding|[Aa][Ii]" | head -5
+    ls -la ~/ | grep -E "^d.*[Cc]oding" | head -5
     echo "Staying in: $(pwd)"
 fi
 
