@@ -46,62 +46,71 @@ echo Step 4: Opening WSL Ubuntu 22.04 and setting up environment...
 echo Command to be executed: %COMMAND_TO_RUN%
 echo.
 
-REM Execute commands directly in WSL to avoid line ending issues
-wsl -d Ubuntu-22.04 bash -c "echo '========================================'
-echo 'Setting up Triton environment...'
-echo '========================================'
-# Find conda installation
-if [ -f ~/miniconda3/etc/profile.d/conda.sh ]; then
-    source ~/miniconda3/etc/profile.d/conda.sh
-elif [ -f ~/anaconda3/etc/profile.d/conda.sh ]; then
-    source ~/anaconda3/etc/profile.d/conda.sh
-elif command -v conda >/dev/null 2>&1; then
-    echo 'Conda already in PATH'
-else
-    echo 'Error: Conda not found. Please check your conda installation.'
-    echo 'Trying alternative activation methods...'
-    if [ -f ~/.bashrc ]; then
-        source ~/.bashrc
-    fi
-fi
+REM Create a temporary script for WSL execution (with proper Unix line endings)
+(
+echo #!/bin/bash
+echo echo "========================================"
+echo echo "Setting up Triton environment..."
+echo echo "========================================"
+echo # Find conda installation
+echo if [ -f ~/miniconda3/etc/profile.d/conda.sh ]; then
+echo     source ~/miniconda3/etc/profile.d/conda.sh
+echo elif [ -f ~/anaconda3/etc/profile.d/conda.sh ]; then
+echo     source ~/anaconda3/etc/profile.d/conda.sh
+echo elif command -v conda ^>/dev/null 2^>^&1; then
+echo     echo "Conda already in PATH"
+echo else
+echo     echo "Error: Conda not found. Please check your conda installation."
+echo     echo "Trying alternative activation methods..."
+echo     if [ -f ~/.bashrc ]; then
+echo         source ~/.bashrc
+echo     fi
+echo fi
+echo.
+echo # Try to activate environment
+echo if command -v conda ^>/dev/null 2^>^&1; then
+echo     conda activate triton-env-stable
+echo     if [ $? -ne 0 ]; then
+echo         echo "Error: Failed to activate triton-env-stable environment"
+echo         echo "Available environments:"
+echo         conda env list
+echo         exit 1
+echo     fi
+echo     echo "Environment activated successfully"
+echo else
+echo     echo "Warning: Conda not available, continuing without virtual environment"
+echo fi
+echo.
+echo echo "Navigating to AI learning directory..."
+echo cd ~/Coding/AI-learning
+echo if [ $? -ne 0 ]; then
+echo     echo "Error: Failed to navigate to ~/Coding/AI-learning"
+echo     echo "Current directory: $(pwd^)"
+echo     echo "Trying alternative paths..."
+echo     if [ -d ~/Coding ]; then
+echo         echo "Available directories in ~/Coding:"
+echo         ls -la ~/Coding/
+echo     else
+echo         echo "~/Coding directory not found"
+echo         echo "Available directories in home:"
+echo         ls -la ~/
+echo     fi
+echo     # Try alternative paths
+echo     cd ~/AI-learning 2^>/dev/null ^|^| cd ~/coding/AI-learning 2^>/dev/null ^|^| echo "Could not find AI-learning directory"
+echo fi
+echo.
+echo echo "Current directory: $(pwd^)"
+echo echo "Executing command: %COMMAND_TO_RUN%"
+echo %COMMAND_TO_RUN%
+echo echo "Command execution completed"
+echo exec bash
+) > wsl_setup.sh
 
-# Try to activate environment
-if command -v conda >/dev/null 2>&1; then
-    conda activate triton-env-stable
-    if [ \$? -ne 0 ]; then
-        echo 'Error: Failed to activate triton-env-stable environment'
-        echo 'Available environments:'
-        conda env list
-        exit 1
-    fi
-    echo 'Environment activated successfully'
-else
-    echo 'Warning: Conda not available, continuing without virtual environment'
-fi
+REM Convert to Unix line endings and execute in WSL
+wsl -d Ubuntu-22.04 bash -c "dos2unix wsl_setup.sh 2>/dev/null; chmod +x wsl_setup.sh; ./wsl_setup.sh"
 
-echo 'Navigating to AI learning directory...'
-cd ~/Coding/AI-learning
-if [ \$? -ne 0 ]; then
-    echo 'Error: Failed to navigate to ~/Coding/AI-learning'
-    echo 'Current directory:' \$(pwd)
-    echo 'Trying alternative paths...'
-    if [ -d ~/Coding ]; then
-        echo 'Available directories in ~/Coding:'
-        ls -la ~/Coding/
-    else
-        echo '~/Coding directory not found'
-        echo 'Available directories in home:'
-        ls -la ~/
-    fi
-    # Try alternative paths
-    cd ~/AI-learning 2>/dev/null || cd ~/coding/AI-learning 2>/dev/null || echo 'Could not find AI-learning directory'
-fi
-
-echo 'Current directory:' \$(pwd)
-echo 'Executing command: %COMMAND_TO_RUN%'
-%COMMAND_TO_RUN%
-echo 'Command execution completed'
-exec bash"
+REM Clean up
+del wsl_setup.sh 2>nul
 
 
 echo.
