@@ -6,6 +6,7 @@ Both implemented with Triton for fair comparison
 import os
 import json
 import time
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -22,6 +23,7 @@ import wandb  # Optional: for experiment tracking
 from bert_config import BERTComparisonConfig
 from triton_standard_attention import StandardBERTAttention
 from triton_rope_attention import RoPEBERTAttention
+from data_preprocessing import load_training_data
 
 
 @dataclass
@@ -158,16 +160,35 @@ class Trainer:
         self.eval_dataloader = eval_dataloader
         self.config = config
         
-        # Optimizer
-        self.optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate)
+        # Optimizer with proper weight decay and parameter groups
+        no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight", "position_embeddings.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        self.optimizer = optim.AdamW(optimizer_grouped_parameters, lr=config.learning_rate, eps=1e-8)
         
-        # Learning rate scheduler
+        # Learning rate scheduler with proper warmup and decay
         total_steps = len(train_dataloader) * config.num_epochs // config.gradient_accumulation_steps
-        self.scheduler = optim.lr_scheduler.LinearLR(
-            self.optimizer,
-            start_factor=0.1,
-            total_iters=config.warmup_steps
-        )
+        print(f"Total training steps: {total_steps}")
+        
+        # Create a proper warmup + cosine decay scheduler
+        def lr_lambda(current_step):
+            if current_step < config.warmup_steps:
+                # Warmup phase: linear increase from 0.1x to 1.0x
+                return float(current_step) / float(max(1, config.warmup_steps))
+            else:
+                # Cosine decay phase
+                progress = float(current_step - config.warmup_steps) / float(max(1, total_steps - config.warmup_steps))
+                return max(0.01, 0.5 * (1.0 + math.cos(math.pi * progress)))  # Decay to 1% of original LR
+        
+        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
         
         # Training history
         self.history = {
@@ -400,20 +421,7 @@ def plot_comparison(standard_history: Dict, rope_history: Dict, save_path: str =
     print(f"Comparison plot saved to {save_path}")
 
 
-def load_training_data(file_path: str):
-    """Load training texts from file"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            texts = [line.strip() for line in f if line.strip()]
-        print(f"Loaded {len(texts)} training texts from {file_path}")
-        return texts
-    except FileNotFoundError:
-        print(f"Warning: {file_path} not found. Using minimal fallback dataset.")
-        return [
-            "The quick brown fox jumps over the lazy dog.",
-            "Machine learning is a subset of artificial intelligence.",
-            "Transformers have revolutionized natural language processing."
-        ] * 100
+
 
 
 def main():
