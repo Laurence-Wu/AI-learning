@@ -34,7 +34,7 @@ class TrainingConfig:
     batch_size: int = 32
     learning_rate: float = 5e-5
     num_epochs: int = 50
-    max_seq_length: int = 512
+    max_seq_length: int = 1024
     mlm_probability: float = 0.15
     warmup_steps: int = 50
     logging_steps: int = 10

@@ -88,17 +88,17 @@ def _exposb_attention_fwd_kernel(
     freq_idx = tl.arange(0, dim_half)
     dim_factor = freq_idx.to(tl.float32) * 2.0 / BLOCK_DMODEL
     
-    # ExpoSB modification: add exponential decay based on position
+    # Enhanced ExpoSB modification: stronger exponential decay for longer sequences
     # This creates a stick-breaking structure that decays with distance
     log_theta = tl.log(base_theta)
     
     # Standard frequency computation for dim_half dimensions
     inv_freq = tl.exp(-log_theta * dim_factor)
     
-    # Add exponential decay factor based on position
+    # Add stronger exponential decay factor based on position
     # The decay creates stick-breaking structure at different scales
-    decay_factor = 0.98  # Exponential decay rate
-    pos_decay = tl.exp(-pos_m[:, None].to(tl.float32) * 0.001)  # Position-based decay
+    decay_factor = 0.95  # Stronger exponential decay rate
+    pos_decay = tl.exp(-pos_m[:, None].to(tl.float32) * 0.005)  # Increased position-based decay
     
     # Combine frequency with position-based modulation
     # Create angles for rotation - need to handle dimension properly
@@ -108,9 +108,10 @@ def _exposb_attention_fwd_kernel(
     
     angle_m = pos_m[:, None].to(tl.float32) * inv_freq_expanded[None, :]
     
-    # Apply stick breaking transformation with exponential modulation
-    cos_m = tl.cos(angle_m) * (1.0 + 0.2 * pos_decay)  # Modulated cosine
-    sin_m = tl.sin(angle_m) * (1.0 + 0.2 * pos_decay)  # Modulated sine
+    # Apply enhanced stick breaking transformation with exponential modulation
+    position_scale = 1.0 + 0.5 * pos_decay * tl.cos(pos_m[:, None].to(tl.float32) * 0.01)
+    cos_m = tl.cos(angle_m) * position_scale  # Enhanced modulated cosine
+    sin_m = tl.sin(angle_m) * position_scale  # Enhanced modulated sine
     
     # Rotate Q: split into even/odd indices
     q_even = tl.where(offs_d % 2 == 0, q, 0)
@@ -458,12 +459,13 @@ def apply_exposb(x, position_ids):
     # Compute angles with exponential decay
     angles = position_ids * inv_freq
     
-    # Add exponential decay based on position
-    pos_decay = torch.exp(-position_ids.float() * 0.001)
+    # Add exponential decay based on position - stronger for longer sequences
+    pos_decay = torch.exp(-position_ids.float() * 0.005)  # Increased decay rate
     
-    # Modulated trigonometric functions
-    cos_vals = torch.cos(angles) * (1.0 + 0.2 * pos_decay)
-    sin_vals = torch.sin(angles) * (1.0 + 0.2 * pos_decay)
+    # Enhanced modulated trigonometric functions with position-dependent scaling
+    position_scale = 1.0 + 0.5 * pos_decay * torch.cos(position_ids.float() * 0.01)
+    cos_vals = torch.cos(angles) * position_scale
+    sin_vals = torch.sin(angles) * position_scale
     
     # Split x into even and odd indices
     x_even = x[..., ::2]
@@ -477,11 +479,19 @@ def apply_exposb(x, position_ids):
     x_rotated = torch.stack([x_rotated_even, x_rotated_odd], dim=-1)
     x_rotated = x_rotated.flatten(-2)
     
-    # Apply band-pass filtering
-    band_center = head_dim // 4
-    band_width = head_dim // 8
-    freq_response = torch.exp(-((torch.arange(head_dim, device=x.device) - band_center) ** 2) / (2.0 * band_width ** 2))
-    x_rotated = x_rotated * (0.8 + 0.4 * freq_response)
+    # Apply enhanced band-pass filtering for long-range modeling
+    band_center = head_dim // 3  # Shift center for better frequency response
+    band_width = head_dim // 6   # Narrower band for more selective filtering
+    freq_indices = torch.arange(head_dim, device=x.device)
+    freq_response = torch.exp(-((freq_indices - band_center) ** 2) / (2.0 * band_width ** 2))
+    
+    # Add distance-dependent attenuation
+    seq_len = x.shape[2]
+    distance_factor = torch.exp(-torch.arange(seq_len, device=x.device).float() * 0.001)
+    distance_factor = distance_factor.unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+    
+    # Apply combined filtering
+    x_rotated = x_rotated * (0.7 + 0.6 * freq_response) * (0.9 + 0.2 * distance_factor)
     
     return x_rotated
 
