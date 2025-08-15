@@ -97,11 +97,26 @@ class ModifiedBERTModel(BertForMaskedLM):
         # Replace all attention layers with our custom implementation
         for layer in self.bert.encoder.layer:
             if attention_type == "standard":
-                layer.attention.self = StandardBERTAttention(config)
+                layer.attention.self = StandardBERTAttention(
+                    hidden_size=config.hidden_size,
+                    num_heads=config.num_attention_heads,
+                    max_position_embeddings=config.max_position_embeddings,
+                    dropout=config.attention_probs_dropout_prob
+                )
             elif attention_type == "rope":
-                layer.attention.self = RoPEBERTAttention(config)
+                layer.attention.self = RoPEBERTAttention(
+                    hidden_size=config.hidden_size,
+                    num_heads=config.num_attention_heads,
+                    max_position_embeddings=config.max_position_embeddings,
+                    dropout=config.attention_probs_dropout_prob
+                )
             elif attention_type == "exposb":
-                layer.attention.self = ExpoSBBERTAttention(config)
+                layer.attention.self = ExpoSBBERTAttention(
+                    hidden_size=config.hidden_size,
+                    num_heads=config.num_attention_heads,
+                    max_position_embeddings=config.max_position_embeddings,
+                    dropout=config.attention_probs_dropout_prob
+                )
             elif attention_type == "absolute":
                 layer.attention.self = AbsoluteBERTAttention(config)
             else:
@@ -330,7 +345,7 @@ def main():
     
     # Load data
     print("Loading training data...")
-    all_texts = load_training_data(config.data_file if hasattr(config, 'data_file') else "training_data.txt")
+    all_texts = load_training_data(config.training_data_file)
     
     # Split into train and validation sets (80-20 split)
     split_idx = int(len(all_texts) * 0.8)
