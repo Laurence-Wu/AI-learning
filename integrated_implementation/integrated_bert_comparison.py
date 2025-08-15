@@ -118,7 +118,12 @@ class ModifiedBERTModel(BertForMaskedLM):
                     dropout=config.attention_probs_dropout_prob
                 )
             elif attention_type == "absolute":
-                layer.attention.self = AbsoluteBERTAttention(config)
+                layer.attention.self = AbsoluteBERTAttention(
+                    hidden_size=config.hidden_size,
+                    num_heads=config.num_attention_heads,
+                    max_position_embeddings=config.max_position_embeddings,
+                    dropout=config.attention_probs_dropout_prob
+                )
             else:
                 raise ValueError(f"Unknown attention type: {attention_type}")
 
@@ -142,8 +147,13 @@ def train_model(
     
     def lr_lambda(current_step):
         if current_step < warmup_steps:
+            # Warmup: linear increase
             return float(current_step) / float(max(1, warmup_steps))
-        return max(0.0, float(total_steps - current_step) / float(max(1, total_steps - warmup_steps)))
+        else:
+            # Cosine decay: smoother decay that doesn't go to zero
+            import math
+            progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+            return max(0.01, 0.5 * (1.0 + math.cos(math.pi * progress)))
     
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
