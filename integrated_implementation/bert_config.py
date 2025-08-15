@@ -42,6 +42,9 @@ class BERTComparisonConfig:
     fp16: bool = False
     seed: int = 42
     
+    # Attention Types to Compare
+    attention_algorithms: str = "standard,rope,exposb,absolute"
+    
     # Data Configuration
     training_data_file: str = "training_data.txt"
     train_split: float = 0.8
@@ -85,6 +88,9 @@ class BERTComparisonConfig:
             # Training Options
             fp16=str_to_bool(os.getenv('FP16', 'false')),
             seed=int(os.getenv('SEED', 42)),
+            
+            # Attention Types
+            attention_algorithms=os.getenv('ATTENTION_ALGORITHMS', 'standard,rope,exposb,absolute'),
             
             # Data Configuration
             training_data_file=os.getenv('TRAINING_DATA_FILE', 'training_data.txt'),
