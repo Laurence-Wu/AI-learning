@@ -330,7 +330,12 @@ def main():
     
     # Load data
     print("Loading training data...")
-    train_texts, val_texts = load_training_data(config)
+    all_texts = load_training_data(config.data_file if hasattr(config, 'data_file') else "training_data.txt")
+    
+    # Split into train and validation sets (80-20 split)
+    split_idx = int(len(all_texts) * 0.8)
+    train_texts = all_texts[:split_idx]
+    val_texts = all_texts[split_idx:]
     
     if not train_texts:
         print("No training data found. Creating sample data...")
