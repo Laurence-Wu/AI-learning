@@ -46,6 +46,9 @@ class BERTComparisonConfig:
     training_data_file: str = "training_data.txt"
     train_split: float = 0.8
     
+    # Attention Algorithm Configuration
+    attention_algorithms: str = "standard,rope,exposb,absolute"
+    
     # Output Configuration
     output_dir: str = "./bert_comparison_outputs"
     plot_save_path: str = "bert_comparison.png"
@@ -89,6 +92,9 @@ class BERTComparisonConfig:
             # Data Configuration
             training_data_file=os.getenv('TRAINING_DATA_FILE', 'training_data.txt'),
             train_split=float(os.getenv('TRAIN_SPLIT', 0.8)),
+            
+            # Attention Algorithm Configuration
+            attention_algorithms=os.getenv('ATTENTION_ALGORITHMS', 'standard,rope,exposb,absolute'),
             
             # Output Configuration
             output_dir=os.getenv('OUTPUT_DIR', './bert_comparison_outputs'),

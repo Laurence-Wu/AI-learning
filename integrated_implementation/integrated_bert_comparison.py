@@ -303,7 +303,7 @@ def main():
     """Main training loop for integrated comparison"""
     
     # Load configuration
-    config = BERTComparisonConfig()
+    config = BERTComparisonConfig.from_env()
     
     # Set random seeds
     torch.manual_seed(config.seed)
