@@ -16,11 +16,11 @@ def test_basic_functionality():
     print("Testing ExpoSB basic functionality...")
     
     try:
-        # Test parameters
+        # Test parameters - using config values
         batch_size = 2
         seq_len = 64  # Smaller for testing
-        hidden_size = 768
-        num_heads = 12
+        hidden_size = 512  # Match config
+        num_heads = 8      # Match config
         
         # Create ExpoSB model
         exposb_model = ExpoSBBERTAttention(hidden_size, num_heads)
@@ -105,8 +105,8 @@ def test_dimension_consistency():
     try:
         batch_size = 1
         seq_len = 32
-        hidden_size = 768
-        num_heads = 12
+        hidden_size = 512  # Match config
+        num_heads = 8      # Match config
         head_dim = hidden_size // num_heads
         
         model = ExpoSBBERTAttention(hidden_size, num_heads)

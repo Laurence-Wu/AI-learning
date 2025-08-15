@@ -47,7 +47,7 @@ def clean_gutenberg_text(text: str) -> str:
     return content
 
 
-def split_into_training_chunks(text: str, target_length: int = 800, overlap: int = 100) -> List[str]:
+def split_into_training_chunks(text: str, target_length: int = 200, overlap: int = 30) -> List[str]:
     """
     Split text into overlapping chunks suitable for BERT training
     
@@ -132,8 +132,8 @@ def process_huckleberry_finn_data(book_file: str = "training_data/Adventures-of-
         cleaned_text = clean_gutenberg_text(raw_text)
         print(f"✓ Cleaned text: {len(cleaned_text):,} characters, {len(cleaned_text.split()):,} words")
         
-        # Split into training chunks for longer sequences
-        chunks = split_into_training_chunks(cleaned_text, target_length=800, overlap=100)
+        # Split into training chunks
+        chunks = split_into_training_chunks(cleaned_text, target_length=200, overlap=30)
         print(f"✓ Generated {len(chunks)} training chunks")
         print(f"✓ Average chunk length: {sum(len(chunk.split()) for chunk in chunks) / len(chunks):.1f} words")
         

@@ -1,7 +1,7 @@
 """
-BERT Pretraining Comparison: Standard Attention vs ExpoSB Attention
+BERT Pretraining Comparison: Standard Attention vs RSE Attention
 Both implemented with Triton for fair comparison
-ExpoSB: Exponential Stick Breaking position encoding
+RSE: Rotary Stick-breaking Encoding (integrated RSE + Stick-Breaking)
 """
 
 import os
@@ -23,18 +23,19 @@ import wandb  # Optional: for experiment tracking
 # Import our configuration and attention implementations
 from bert_config import BERTComparisonConfig
 from triton_standard_attention import StandardBERTAttention
-from triton_exposb_attention import ExpoSBBERTAttention
+from triton_rse_attention import RSEBERTAttention
+from triton_rse_attention_corrected import CorrectedRSEBERTAttention
 from data_preprocessing import load_training_data
 
 
 @dataclass
 class TrainingConfig:
     """Legacy training configuration - use BERTComparisonConfig instead"""
-    model_type: str  # "standard" or "exposb"
+    model_type: str  # "standard" or "rse"
     batch_size: int = 32
     learning_rate: float = 5e-5
     num_epochs: int = 50
-    max_seq_length: int = 1024
+    max_seq_length: int = 512
     mlm_probability: float = 0.15
     warmup_steps: int = 50
     logging_steps: int = 10
@@ -78,7 +79,7 @@ class BERTDataset(Dataset):
         
         # Create random mask
         probability_matrix = torch.full(labels.shape, self.mlm_probability)
-        # Create special tokens mask with proper shape handling
+        # Create special tokens mask with prser shape handling
         special_tokens_mask = torch.isin(labels, torch.tensor(list(self.tokenizer.all_special_ids)))
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
         
@@ -105,7 +106,7 @@ class BERTDataset(Dataset):
 
 class ModifiedBERTModel(nn.Module):
     """
-    Modified BERT model that can use either standard or RoPE attention
+    Modified BERT model that can use either standard or RSE attention
     """
     
     def __init__(self, config: BertConfig, attention_type: str = "standard"):
@@ -129,11 +130,20 @@ class ModifiedBERTModel(nn.Module):
             original_attention = layer.attention.self
             
             # Choose attention implementation
-            if self.attention_type == "exposb":
-                new_attention = ExpoSBBERTAttention(
-                    hidden_size=self.config.hidden_size,
-                    num_heads=self.config.num_attention_heads,
-                    max_position_embeddings=self.config.max_position_embeddings,
+            if self.attention_type == "rse":
+                # Use corrected RSE implementation with mathematical fixes
+                new_attention = CorrectedRSEBERTAttention(
+                    d_model=self.config.hidden_size,
+                    n_heads=self.config.num_attention_heads,
+                    max_seq_len=self.config.max_position_embeddings,
+                    dropout=self.config.attention_probs_dropout_prob
+                )
+            elif self.attention_type == "rse_original":
+                # Keep original RSE for comparison (with known errors)
+                new_attention = RSEBERTAttention(
+                    d_model=self.config.hidden_size,
+                    n_heads=self.config.num_attention_heads,
+                    max_seq_len=self.config.max_position_embeddings,
                     dropout=self.config.attention_probs_dropout_prob
                 )
             else:  # standard
@@ -161,7 +171,7 @@ class Trainer:
         self.eval_dataloader = eval_dataloader
         self.config = config
         
-        # Optimizer with proper weight decay and parameter groups
+        # Optimizer with prser weight decay and parameter groups
         no_decay = ["bias", "LayerNorm.weight", "layer_norm.weight", "position_embeddings.weight"]
         optimizer_grouped_parameters = [
             {
@@ -175,11 +185,11 @@ class Trainer:
         ]
         self.optimizer = optim.AdamW(optimizer_grouped_parameters, lr=config.learning_rate, eps=1e-8)
         
-        # Learning rate scheduler with proper warmup and decay
+        # Learning rate scheduler with prser warmup and decay
         total_steps = len(train_dataloader) * config.num_epochs // config.gradient_accumulation_steps
         print(f"Total training steps: {total_steps}")
         
-        # Create a proper warmup + cosine decay scheduler
+        # Create a prser warmup + cosine decay scheduler
         def lr_lambda(current_step):
             if current_step < config.warmup_steps:
                 # Warmup phase: linear increase from 0.1x to 1.0x
@@ -327,7 +337,7 @@ def smooth_data(data, window=5):
         smoothed.append(np.mean(data[start:end]))
     return smoothed
 
-def plot_comparison(standard_history: Dict, exposb_history: Dict, save_path: str = "bert_comparison.png"):
+def plot_comparison(standard_history: Dict, rse_history: Dict, save_path: str = "bert_comparison.png"):
     """Plot comparison graphs with smoothing for clarity"""
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
@@ -335,23 +345,23 @@ def plot_comparison(standard_history: Dict, exposb_history: Dict, save_path: str
     # Plot raw data with low alpha
     axes[0, 0].plot(standard_history["steps"], standard_history["train_mlm_loss"], 
                     color="blue", alpha=0.2, linewidth=0.5)
-    axes[0, 0].plot(exposb_history["steps"], exposb_history["train_mlm_loss"], 
+    axes[0, 0].plot(rse_history["steps"], rse_history["train_mlm_loss"], 
                     color="red", alpha=0.2, linewidth=0.5)
     
     # Plot smoothed data on top
     smoothed_standard = smooth_data(standard_history["train_mlm_loss"], window=10)
-    smoothed_exposb = smooth_data(exposb_history["train_mlm_loss"], window=10)
+    smoothed_rse = smooth_data(rse_history["train_mlm_loss"], window=10)
     axes[0, 0].plot(standard_history["steps"][:len(smoothed_standard)], smoothed_standard, 
                     label="Standard Attention (smoothed)", color="blue", alpha=0.9, linewidth=2)
-    axes[0, 0].plot(exposb_history["steps"][:len(smoothed_exposb)], smoothed_exposb, 
-                    label="ExpoSB Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
+    axes[0, 0].plot(rse_history["steps"][:len(smoothed_rse)], smoothed_rse, 
+                    label="RSE Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
     axes[0, 0].set_xlabel("Training Steps (K)", fontsize=12)
     axes[0, 0].set_ylabel("MLM Loss", fontsize=12)
     axes[0, 0].set_title("Training MLM Loss Comparison", fontsize=14)
     axes[0, 0].legend()
     axes[0, 0].grid(True, alpha=0.3)
     
-    # Evaluation MLM Loss - with safety checks and proper step alignment
+    # Evaluation MLM Loss - with safety checks and prser step alignment
     if len(standard_history["eval_mlm_loss"]) > 0 and len(standard_history["steps"]) > 0:
         # Create evaluation steps based on eval_steps interval from config
         num_evals = len(standard_history["eval_mlm_loss"])
@@ -366,19 +376,19 @@ def plot_comparison(standard_history: Dict, exposb_history: Dict, save_path: str
             axes[0, 1].plot(eval_steps_standard, standard_history["eval_mlm_loss"][:len(eval_steps_standard)], 
                             label="Standard Attention", color="blue", marker="o", alpha=0.7)
     
-    if len(exposb_history["eval_mlm_loss"]) > 0 and len(exposb_history["steps"]) > 0:
+    if len(rse_history["eval_mlm_loss"]) > 0 and len(rse_history["steps"]) > 0:
         # Create evaluation steps based on eval_steps interval from config
-        num_evals = len(exposb_history["eval_mlm_loss"])
+        num_evals = len(rse_history["eval_mlm_loss"])
         if num_evals > 0:
             # Calculate actual evaluation steps
-            total_steps = exposb_history["steps"][-1] if exposb_history["steps"] else 0
+            total_steps = rse_history["steps"][-1] if rse_history["steps"] else 0
             eval_interval = max(1, total_steps // max(1, num_evals))
-            eval_steps_exposb = [eval_interval * (i + 1) for i in range(num_evals)]
+            eval_steps_rse = [eval_interval * (i + 1) for i in range(num_evals)]
             # Ensure we don't exceed available data
-            eval_steps_exposb = eval_steps_exposb[:len(exposb_history["eval_mlm_loss"])]
+            eval_steps_rse = eval_steps_rse[:len(rse_history["eval_mlm_loss"])]
             
-            axes[0, 1].plot(eval_steps_exposb, exposb_history["eval_mlm_loss"][:len(eval_steps_exposb)], 
-                            label="ExpoSB Attention", color="red", marker="s", alpha=0.7)
+            axes[0, 1].plot(eval_steps_rse, rse_history["eval_mlm_loss"][:len(eval_steps_rse)], 
+                            label="RSE Attention", color="red", marker="s", alpha=0.7)
     
     axes[0, 1].set_xlabel("Training Steps (K)", fontsize=12)
     axes[0, 1].set_ylabel("MLM Loss", fontsize=12)
@@ -390,16 +400,16 @@ def plot_comparison(standard_history: Dict, exposb_history: Dict, save_path: str
     # Plot raw data with low alpha
     axes[1, 0].plot(standard_history["steps"], standard_history["train_loss"], 
                     color="blue", alpha=0.2, linewidth=0.5)
-    axes[1, 0].plot(exposb_history["steps"], exposb_history["train_loss"], 
+    axes[1, 0].plot(rse_history["steps"], rse_history["train_loss"], 
                     color="red", alpha=0.2, linewidth=0.5)
     
     # Plot smoothed data on top
     smoothed_standard_lm = smooth_data(standard_history["train_loss"], window=10)
-    smoothed_exposb_lm = smooth_data(exposb_history["train_loss"], window=10)
+    smoothed_rse_lm = smooth_data(rse_history["train_loss"], window=10)
     axes[1, 0].plot(standard_history["steps"][:len(smoothed_standard_lm)], smoothed_standard_lm, 
                     label="Standard Attention (smoothed)", color="blue", alpha=0.9, linewidth=2)
-    axes[1, 0].plot(exposb_history["steps"][:len(smoothed_exposb_lm)], smoothed_exposb_lm, 
-                    label="ExpoSB Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
+    axes[1, 0].plot(rse_history["steps"][:len(smoothed_rse_lm)], smoothed_rse_lm, 
+                    label="RSE Attention (smoothed)", color="red", alpha=0.9, linewidth=2)
     axes[1, 0].set_xlabel("Training Steps (K)", fontsize=12)
     axes[1, 0].set_ylabel("LM Loss", fontsize=12)
     axes[1, 0].set_title("Training LM Loss Comparison", fontsize=14)
@@ -414,7 +424,7 @@ def plot_comparison(standard_history: Dict, exposb_history: Dict, save_path: str
     axes[1, 1].set_title("Learning Rate Schedule", fontsize=14)
     axes[1, 1].grid(True, alpha=0.3)
     
-    plt.suptitle("BERT Pretraining: Standard vs ExpoSB Attention Comparison", fontsize=16)
+    plt.suptitle("BERT Pretraining: Standard vs RSE Attention Comparison", fontsize=16)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.show()
@@ -451,7 +461,7 @@ def main():
     # Load training data
     sample_texts = load_training_data(config.training_data_file)
     
-    # Create datasets with proper train/eval split
+    # Create datasets with prser train/eval split
     split_idx = int(config.train_split * len(sample_texts))
     train_texts = sample_texts[:split_idx]
     eval_texts = sample_texts[split_idx:]
@@ -498,21 +508,21 @@ def main():
     # Save standard model
     torch.save(standard_model.state_dict(), config.standard_model_save_path)
     
-    # Clear GPU memory before training ExpoSB model
+    # Clear GPU memory before training RSE model
     del standard_model
     del standard_trainer
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         print("GPU memory cleared between models")
     
-    # Train ExpoSB attention model
+    # Train corrected RSE attention model
     print("\n" + "=" * 50)
-    print("Training ExpoSB Attention BERT")
+    print("Training Corrected RSE Attention BERT")
     print("=" * 50)
     
-    # Create training config for ExpoSB attention from main config
-    exposb_config = TrainingConfig(
-        model_type="exposb",
+    # Create training config for RSE attention from main config
+    rse_config = TrainingConfig(
+        model_type="rse",
         batch_size=config.batch_size,
         learning_rate=config.learning_rate,
         num_epochs=config.num_epochs,
@@ -528,34 +538,34 @@ def main():
         output_dir=config.output_dir
     )
     
-    exposb_model = ModifiedBERTModel(bert_config, attention_type="exposb")
-    exposb_trainer = Trainer(exposb_model, train_dataloader, eval_dataloader, exposb_config)
-    exposb_history = exposb_trainer.train()
+    rse_model = ModifiedBERTModel(bert_config, attention_type="rse")
+    rse_trainer = Trainer(rse_model, train_dataloader, eval_dataloader, rse_config)
+    rse_history = rse_trainer.train()
     
-    # Save ExpoSB model
-    torch.save(exposb_model.state_dict(), config.exposb_model_save_path)
+    # Save RSE model
+    torch.save(rse_model.state_dict(), config.rse_model_save_path)
     
     # Plot comparison
-    plot_comparison(standard_history, exposb_history, config.plot_save_path)
+    plot_comparison(standard_history, rse_history, config.plot_save_path)
     
     # Print final comparison with safety checks
     print("\n" + "=" * 50)
     print("Final Comparison")
     print("=" * 50)
     
-    if len(standard_history['train_loss']) > 0 and len(exposb_history['train_loss']) > 0:
+    if len(standard_history['train_loss']) > 0 and len(rse_history['train_loss']) > 0:
         print(f"Standard Attention - Final Train Loss: {standard_history['train_loss'][-1]:.4f}")
-        print(f"ExpoSB Attention - Final Train Loss: {exposb_history['train_loss'][-1]:.4f}")
+        print(f"RSE Attention - Final Train Loss: {rse_history['train_loss'][-1]:.4f}")
         
-        if len(standard_history['eval_loss']) > 0 and len(exposb_history['eval_loss']) > 0:
+        if len(standard_history['eval_loss']) > 0 and len(rse_history['eval_loss']) > 0:
             print(f"Standard Attention - Final Eval Loss: {standard_history['eval_loss'][-1]:.4f}")
-            print(f"ExpoSB Attention - Final Eval Loss: {exposb_history['eval_loss'][-1]:.4f}")
+            print(f"RSE Attention - Final Eval Loss: {rse_history['eval_loss'][-1]:.4f}")
             
             # Calculate improvement
-            train_improvement = (standard_history['train_loss'][-1] - exposb_history['train_loss'][-1]) / standard_history['train_loss'][-1] * 100
-            eval_improvement = (standard_history['eval_loss'][-1] - exposb_history['eval_loss'][-1]) / standard_history['eval_loss'][-1] * 100
+            train_improvement = (standard_history['train_loss'][-1] - rse_history['train_loss'][-1]) / standard_history['train_loss'][-1] * 100
+            eval_improvement = (standard_history['eval_loss'][-1] - rse_history['eval_loss'][-1]) / standard_history['eval_loss'][-1] * 100
             
-            print(f"\nExpoSB vs Standard:")
+            print(f"\nRSE vs Standard:")
             print(f"Training Loss Improvement: {train_improvement:.2f}%")
             print(f"Evaluation Loss Improvement: {eval_improvement:.2f}%")
         else:
