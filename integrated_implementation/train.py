@@ -37,8 +37,10 @@ from collections import defaultdict
 import numpy as np
 from scipy import stats
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add project root and src to path for imports
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
 import torch
 import torch.distributed as dist
