@@ -18,8 +18,9 @@ Features:
 __version__ = "1.0.0"
 __author__ = "AI Learning Project"
 
-from .models import *
 from .training import *
-from .data import *
 from .config import *
 from .attention import *
+from .utils import *
+from .data import *
+from .models import *
