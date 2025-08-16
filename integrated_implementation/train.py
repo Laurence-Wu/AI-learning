@@ -47,14 +47,16 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from src.config import load_config, ExperimentConfig
-from src.data import (
-    BERTMLMDataset, get_dataloader, DataProcessor, MLMConfig, MLMStrategy,
-    CLMDataset, get_clm_dataloader, CLMStrategy
-)
-from src.models import create_bert_model, create_clm_model
-from src.training import BERTTrainer, get_optimizer, get_scheduler
-from src.utils import setup_logging, get_device, set_seed
+from src.config.experiment_config import load_config, ExperimentConfig
+from src.data.mlm_patterns import BERTMLMDataset, get_dataloader, MLMConfig, MLMStrategy
+from src.data.clm_patterns import CLMDataset, get_clm_dataloader, CLMStrategy
+from src.data.preprocessing import DataProcessor
+from src.models.bert_models import create_bert_model, create_clm_model
+from src.training.trainer import BERTTrainer
+from src.training.optimizer import get_optimizer
+from src.training.scheduler import get_scheduler
+from src.utils.device import get_device
+from src.utils import setup_logging, set_seed
 from src.attention import get_attention_class
 
 from transformers import BertTokenizer, BertConfig
