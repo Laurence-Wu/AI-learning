@@ -1,0 +1,59 @@
+# Quick Test Configuration for Development and Testing
+# ====================================================
+
+experiment_name: "quick_test"
+description: "Fast test configuration for development and debugging"
+tags: ["test", "debug", "development"]
+
+# Test only standard and rope for speed
+attention_algorithms: ["standard", "rope"]
+
+training:
+  num_epochs: 2
+  batch_size: 8
+  learning_rate: 1e-4
+  warmup_steps: 10
+  
+  gradient_accumulation_steps: 1
+  
+  scheduler:
+    type: "linear"
+    num_warmup_steps: 10
+  
+  optimizer:
+    type: "adamw"
+  
+  # Frequent logging for debugging
+  logging_steps: 5
+  eval_steps: 20
+  save_steps: 50
+  
+  num_workers: 0  # No multiprocessing for debugging
+
+model:
+  # Smaller model for faster testing
+  hidden_size: 256
+  num_hidden_layers: 4
+  num_attention_heads: 4
+  intermediate_size: 1024
+  max_position_embeddings: 128
+
+data:
+  max_seq_length: 128
+  mlm_strategy: "standard"
+  mlm_probability: 0.15
+  max_examples: 100  # Limit data for quick testing
+  
+  preprocessing:
+    min_chars: 10
+    max_chars: 1000
+    min_words: 3
+    deduplicate: false  # Skip for speed
+
+device: "auto"
+mixed_precision: false  # Disable for debugging
+seed: 42
+output_dir: "./test_outputs"
+log_level: "DEBUG"
+
+use_wandb: false
