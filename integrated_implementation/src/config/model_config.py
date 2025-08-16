@@ -6,7 +6,7 @@ Configuration for BERT model architecture.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 from .base_config import BaseConfig
 
 

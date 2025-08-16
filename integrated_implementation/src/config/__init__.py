@@ -12,7 +12,7 @@ Centralized configuration system for BERT training experiments with:
 from .base_config import BaseConfig, ConfigError
 from .training_config import TrainingConfig, OptimizerConfig, SchedulerConfig
 from .model_config import ModelConfig, AttentionConfig
-from .data_config import DataConfig, MLMConfig as DataMLMConfig
+from .data_config import DataConfig
 from .experiment_config import ExperimentConfig, load_config, save_config
 
 __all__ = [
@@ -24,7 +24,6 @@ __all__ = [
     'OptimizerConfig',
     'SchedulerConfig', 
     'AttentionConfig',
-    'DataMLMConfig',
     'ConfigError',
     'load_config',
     'save_config'
