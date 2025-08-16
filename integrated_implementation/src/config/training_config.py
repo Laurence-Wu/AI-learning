@@ -6,7 +6,7 @@ Configuration for model training parameters.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict
 from .base_config import BaseConfig
 
 
