@@ -31,8 +31,7 @@ from configs.experiment_config import load_config
 from src.data.mlm_patterns import BERTMLMDataset, get_dataloader
 from src.data.mlm_patterns import MLMConfig
 from src.data.clm_patterns import CLMDataset, get_clm_dataloader
-from src.models.model_factory import create_bert_model
-from src.models.clm_models import create_clm_model
+from src.models.bert_models import create_bert_model, create_clm_model
 from src.training.trainer import BERTTrainer
 from src.training.optimizer import get_optimizer
 from src.training.scheduler import get_scheduler
