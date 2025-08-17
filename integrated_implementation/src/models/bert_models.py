@@ -72,6 +72,13 @@ class ModifiedBERTModel(nn.Module):
                     max_position_embeddings=self.config.max_position_embeddings,
                     dropout=self.config.attention_probs_dropout_prob
                 )
+            elif self.attention_type == "rse":
+                new_attention = attention_class(
+                    hidden_size=self.config.hidden_size,
+                    num_heads=self.config.num_attention_heads,
+                    max_position_embeddings=self.config.max_position_embeddings,
+                    dropout=self.config.attention_probs_dropout_prob
+                )
             elif self.attention_type == "absolute":
                 new_attention = attention_class(
                     hidden_size=self.config.hidden_size,

@@ -17,7 +17,7 @@ tags: ["bert", "attention", "comparison", "rtx-4070", "optimized"]
 
 # Training Objectives and Attention Mechanisms
 training_objectives: ["mlm", "clm"]
-attention_algorithms: ["standard", "rope", "exposb", "absolute"]
+attention_algorithms: ["standard", "rope", "exposb", "rse", "absolute"]
 
 # Model Configuration (RTX 4070 8GB optimized)
 model:

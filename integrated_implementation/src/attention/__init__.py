@@ -6,12 +6,14 @@ Collection of Triton-optimized attention mechanisms for BERT comparison:
 - StandardBERTAttention: Traditional scaled dot-product attention
 - RoPEBERTAttention: Rotary Position Embedding attention
 - ExpoSBBERTAttention: Exponential Stick Breaking attention  
+- RSEBERTAttention: Rotary Stick-breaking Encoding attention
 - AbsoluteBERTAttention: Absolute positional encoding attention
 """
 
 from .standard_attention import StandardBERTAttention
 from .rope_attention import RoPEBERTAttention
 from .exposb_attention import ExpoSBBERTAttention
+from .rse_attention import RSEBERTAttention
 from .absolute_attention import AbsoluteBERTAttention
 
 # Import simple fallback implementations for debugging
@@ -26,6 +28,7 @@ __all__ = [
     'StandardBERTAttention',
     'RoPEBERTAttention', 
     'ExpoSBBERTAttention',
+    'RSEBERTAttention',
     'AbsoluteBERTAttention',
     'SimpleBERTAttention',
     'SimpleRoPEAttention',
@@ -39,6 +42,7 @@ ATTENTION_REGISTRY = {
     'standard': StandardBERTAttention,
     'rope': RoPEBERTAttention,
     'exposb': ExpoSBBERTAttention,
+    'rse': RSEBERTAttention,
     'absolute': AbsoluteBERTAttention
 }
 
