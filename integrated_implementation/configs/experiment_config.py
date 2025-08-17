@@ -101,6 +101,11 @@ class ExperimentConfig(BaseConfig):
         # Validate configuration
         self._validate()
     
+    @property
+    def num_epochs(self) -> int:
+        """Get number of epochs from training config"""
+        return self.training.num_epochs if self.training else 10
+    
     def _validate(self):
         """Validate configuration consistency"""
         super()._validate()
