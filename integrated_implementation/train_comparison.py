@@ -317,10 +317,9 @@ def load_data_for_objective(config: ExperimentConfig, tokenizer, objective: str)
     
     elif objective == "clm":
         # Create CLM datasets
-        from src.data.clm_patterns import CLMConfig
+        from src.data.clm_patterns import CLMConfig, CLMStrategy
         clm_config = CLMConfig(
-            strategy=CLMStrategy(getattr(args, 'clm_strategy', 'standard')),
-            max_length=config.data.max_seq_length
+            strategy=CLMStrategy(getattr(config.data, 'clm_strategy', 'standard'))
         )
         
         train_dataset = CLMDataset(

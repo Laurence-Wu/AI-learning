@@ -1,0 +1,85 @@
+# Memory-Efficient Configuration for 8GB GPU
+# ==========================================
+
+experiment_name: "memory_efficient_test"
+description: "Memory-efficient configuration for GPUs with 8GB VRAM"
+tags: ["memory-efficient", "8gb-gpu"]
+
+# Test fewer attention mechanisms to reduce memory usage
+attention_algorithms: ["standard", "rope"]
+training_objectives: ["mlm"]
+
+training:
+  num_epochs: 3
+  batch_size: 4  # Small batch size for memory efficiency
+  learning_rate: 1e-4
+  warmup_steps: 50
+  
+  gradient_accumulation_steps: 4  # Simulate larger batch size
+  max_grad_norm: 1.0
+  
+  scheduler:
+    type: "linear"
+    num_warmup_steps: 50
+  
+  optimizer:
+    type: "adamw"
+    betas: [0.9, 0.999]
+    eps: 1e-8
+  
+  # Logging settings
+  logging_steps: 10
+  eval_steps: 50
+  save_steps: 200
+  
+  num_workers: 2
+
+model:
+  # Smaller BERT model for memory efficiency
+  hidden_size: 512        # Reduced from 768
+  num_hidden_layers: 6    # Reduced from 12  
+  num_attention_heads: 8  # Reduced from 12
+  intermediate_size: 2048 # Reduced from 3072
+  max_position_embeddings: 256  # Reduced from 512
+  
+  # Standard regularization
+  attention_dropout: 0.1
+  hidden_dropout: 0.1
+  
+  vocab_size: 30522
+
+data:
+  max_seq_length: 256     # Reduced from 512
+  mlm_strategy: "standard"
+  mlm_probability: 0.15
+  max_examples: 1000      # Limit training data
+  
+  clm_strategy: "standard"
+  
+  preprocessing:
+    min_chars: 20
+    max_chars: 2000
+    min_words: 5
+    deduplicate: true
+
+# Resource management
+device: "auto"
+mixed_precision: true     # Enable for memory efficiency
+gradient_checkpointing: true  # Enable for memory efficiency  
+memory_efficient_attention: true
+
+# Reproducibility
+seed: 42
+deterministic: true
+
+# Output
+output_dir: "./memory_efficient_outputs"
+log_level: "INFO"
+save_config: true
+
+# Disable wandb for simplicity
+use_wandb: false
+
+# Monitoring
+monitor_gpu: true
+monitor_memory: true

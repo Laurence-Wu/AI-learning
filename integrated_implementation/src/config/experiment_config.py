@@ -56,11 +56,21 @@ class ExperimentConfig(BaseConfig):
     device: str = "auto"  # auto, cpu, cuda, mps
     mixed_precision: bool = True
     gradient_checkpointing: bool = False
+    memory_efficient_attention: bool = True
+    
+    # Monitoring
+    monitor_gpu: bool = True
+    monitor_memory: bool = True
+    profile_performance: bool = False
     
     # Experiment tracking
     use_wandb: bool = False
     wandb_project: str = "bert-attention-comparison"
     wandb_entity: Optional[str] = None
+    wandb_tags: Optional[List[str]] = None
+    
+    # Evaluation configuration
+    evaluation: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         super().__post_init__()

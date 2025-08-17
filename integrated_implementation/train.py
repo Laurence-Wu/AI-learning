@@ -99,7 +99,27 @@ class ExperimentResults:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
-        return asdict(self)
+        import numpy as np
+        
+        def convert_numpy_types(obj):
+            """Convert numpy types to native Python types"""
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.bool_):
+                return bool(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {key: convert_numpy_types(value) for key, value in obj.items()}
+            else:
+                return obj
+        
+        data_dict = asdict(self)
+        return convert_numpy_types(data_dict)
 
 
 class StatisticalAnalyzer:
@@ -604,10 +624,9 @@ def create_datasets_and_loaders(texts_split: Tuple[List[str], List[str], List[st
     
     elif objective == "clm":
         # Create CLM datasets
-        from src.data.clm_patterns import CLMConfig
+        from src.data.clm_patterns import CLMConfig, CLMStrategy
         clm_config = CLMConfig(
-            strategy=CLMStrategy(getattr(args, 'clm_strategy', 'standard')),
-            max_length=config.data.max_seq_length
+            strategy=CLMStrategy(getattr(config.data, 'clm_strategy', 'standard'))
         )
         
         train_dataset = CLMDataset(

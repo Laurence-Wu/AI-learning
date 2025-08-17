@@ -27,7 +27,18 @@ class DataConfig(BaseConfig):
     mlm_strategy: str = "standard"
     mlm_probability: float = 0.15
     
+    # MLM strategy-specific parameters (as dictionaries)
+    mlm_dynamic: Optional[Dict[str, Any]] = None
+    mlm_span: Optional[Dict[str, Any]] = None
+    mlm_whole_word: Optional[Dict[str, Any]] = None
+    
+    # CLM configuration
+    clm_strategy: str = "standard"
+    clm_packed: Optional[Dict[str, Any]] = None
+    clm_sliding: Optional[Dict[str, Any]] = None
+    
     # Preprocessing
+    preprocessing: Optional[Dict[str, Any]] = None
     min_chars: int = 20
     max_chars: int = 10000
     deduplicate: bool = True
