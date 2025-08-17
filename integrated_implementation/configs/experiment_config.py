@@ -106,6 +106,56 @@ class ExperimentConfig(BaseConfig):
         """Get number of epochs from training config"""
         return self.training.num_epochs if self.training else 10
     
+    @property
+    def gradient_accumulation_steps(self) -> int:
+        """Get gradient accumulation steps from training config"""
+        return self.training.gradient_accumulation_steps if self.training else 1
+    
+    @property
+    def max_grad_norm(self) -> float:
+        """Get max gradient norm from training config"""
+        return self.training.max_grad_norm if self.training else 1.0
+    
+    @property
+    def logging_steps(self) -> int:
+        """Get logging steps from training config"""
+        return self.training.logging_steps if self.training else 100
+    
+    @property
+    def eval_steps(self) -> int:
+        """Get eval steps from training config"""
+        return self.training.eval_steps if self.training else 500
+    
+    @property
+    def save_steps(self) -> int:
+        """Get save steps from training config"""
+        return self.training.save_steps if self.training else 2000
+    
+    @property
+    def learning_rate(self) -> float:
+        """Get learning rate from training config"""
+        return self.training.learning_rate if self.training else 5e-5
+    
+    @property
+    def batch_size(self) -> int:
+        """Get batch size from training config"""
+        return self.training.batch_size if self.training else 32
+    
+    @property
+    def fp16(self) -> bool:
+        """Get fp16 flag from training config"""
+        return self.training.fp16 if self.training else False
+    
+    @property
+    def max_seq_length(self) -> int:
+        """Get max sequence length from data config"""
+        return self.data.max_seq_length if self.data else 256
+    
+    @property
+    def mlm_probability(self) -> float:
+        """Get MLM probability from data config"""
+        return self.data.mlm_probability if self.data else 0.15
+    
     def _validate(self):
         """Validate configuration consistency"""
         super()._validate()

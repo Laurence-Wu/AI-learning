@@ -113,7 +113,7 @@ def load_and_prepare_data(config):
     """Load and prepare training data"""
     
     # Load training data
-    data_file = os.getenv('TRAINING_DATA_FILE', 'training_data.txt')
+    data_file = config.data.training_data_file if config.data else 'training_data.txt'
     if Path(data_file).exists():
         with open(data_file, 'r', encoding='utf-8') as f:
             texts = [line.strip() for line in f if line.strip()]
@@ -134,18 +134,22 @@ def load_and_prepare_data(config):
     return train_texts, val_texts
 
 
-def create_bert_config():
-    """Create a BERT configuration from environment variables"""
-    return BertConfig(
-        vocab_size=int(os.getenv('VOCAB_SIZE', '30522')),
-        hidden_size=int(os.getenv('HIDDEN_SIZE', '384')),
-        num_hidden_layers=int(os.getenv('NUM_HIDDEN_LAYERS', '6')),
-        num_attention_heads=int(os.getenv('NUM_ATTENTION_HEADS', '6')),
-        intermediate_size=int(os.getenv('INTERMEDIATE_SIZE', '1536')),
-        max_position_embeddings=int(os.getenv('MAX_POSITION_EMBEDDINGS', '512')),
-        hidden_dropout_prob=float(os.getenv('HIDDEN_DROPOUT', '0.1')),
-        attention_probs_dropout_prob=float(os.getenv('ATTENTION_DROPOUT', '0.1'))
-    )
+def create_bert_config(config):
+    """Create BERT configuration from config object"""
+    if config.model:
+        return BertConfig(**config.model.get_bert_config_dict())
+    else:
+        # Fallback to default values
+        return BertConfig(
+            vocab_size=30522,
+            hidden_size=384,
+            num_hidden_layers=6,
+            num_attention_heads=6,
+            intermediate_size=1536,
+            max_position_embeddings=512,
+            hidden_dropout_prob=0.1,
+            attention_probs_dropout_prob=0.1
+        )
 
 
 def train_single_model(attention_type: str, objective: str, train_texts: List[str], 
@@ -158,7 +162,7 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     device = get_device(config.device)
     
     # Create BERT config
-    bert_config = create_bert_config()
+    bert_config = create_bert_config(config)
     
     # Create model
     if objective == "mlm":
@@ -170,30 +174,30 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     
     # Create datasets
     if objective == "mlm":
-        mlm_config = MLMConfig(mlm_probability=float(os.getenv('MLM_PROBABILITY', '0.15')))
+        mlm_config = MLMConfig(mlm_probability=config.mlm_probability)
         train_dataset = BERTMLMDataset(train_texts, tokenizer, 
-                                     max_length=int(os.getenv('MAX_SEQ_LENGTH', '256')),
+                                     max_length=config.max_seq_length,
                                      mlm_config=mlm_config)
         val_dataset = BERTMLMDataset(val_texts, tokenizer,
-                                   max_length=int(os.getenv('MAX_SEQ_LENGTH', '256')),
+                                   max_length=config.max_seq_length,
                                    mlm_config=mlm_config)
-        train_loader = get_dataloader(train_dataset, batch_size=int(os.getenv('BATCH_SIZE', '16')), shuffle=True)
-        val_loader = get_dataloader(val_dataset, batch_size=int(os.getenv('BATCH_SIZE', '16')), shuffle=False)
+        train_loader = get_dataloader(train_dataset, batch_size=config.batch_size, shuffle=True)
+        val_loader = get_dataloader(val_dataset, batch_size=config.batch_size, shuffle=False)
     else:  # clm
         train_dataset = CLMDataset(train_texts, tokenizer,
-                                 max_length=int(os.getenv('MAX_SEQ_LENGTH', '256')))
+                                 max_length=config.max_seq_length)
         val_dataset = CLMDataset(val_texts, tokenizer,
-                               max_length=int(os.getenv('MAX_SEQ_LENGTH', '256')))
-        train_loader = get_clm_dataloader(train_dataset, batch_size=int(os.getenv('BATCH_SIZE', '16')), shuffle=True)
-        val_loader = get_clm_dataloader(val_dataset, batch_size=int(os.getenv('BATCH_SIZE', '16')), shuffle=False)
+                               max_length=config.max_seq_length)
+        train_loader = get_clm_dataloader(train_dataset, batch_size=config.batch_size, shuffle=True)
+        val_loader = get_clm_dataloader(val_dataset, batch_size=config.batch_size, shuffle=False)
     
     # Create optimizer and scheduler
     optimizer = get_optimizer(model, config)
     
     # Calculate training steps for scheduler
-    batch_size = int(os.getenv('BATCH_SIZE', '16'))
-    num_epochs = int(os.getenv('NUM_EPOCHS', '10'))
-    gradient_accumulation_steps = int(os.getenv('GRADIENT_ACCUMULATION_STEPS', '1'))
+    batch_size = config.batch_size
+    num_epochs = config.num_epochs
+    gradient_accumulation_steps = config.gradient_accumulation_steps
     
     steps_per_epoch = len(train_dataset) // (batch_size * gradient_accumulation_steps)
     num_training_steps = steps_per_epoch * num_epochs
@@ -293,7 +297,7 @@ def main():
         return
     
     # Set seed for reproducibility
-    set_seed(int(os.getenv('SEED', '42')))
+    set_seed(42)  # Default seed
     
     # Setup output directory
     output_dir = Path(config.output_dir)

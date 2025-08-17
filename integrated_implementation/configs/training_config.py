@@ -54,6 +54,7 @@ class TrainingConfig(BaseConfig):
     num_workers: int = 4
     pin_memory: bool = True
     dataloader_drop_last: bool = True
+    fp16: bool = False
     
     # Sub-configurations
     optimizer: OptimizerConfig = None
@@ -88,14 +89,21 @@ class TrainingConfig(BaseConfig):
             'GRADIENT_ACCUMULATION_STEPS': 'gradient_accumulation_steps',
             'LOGGING_STEPS': 'logging_steps',
             'EVAL_STEPS': 'eval_steps',
-            'SAVE_STEPS': 'save_steps'
+            'SAVE_STEPS': 'save_steps',
+            'WEIGHT_DECAY': 'weight_decay',
+            'GRADIENT_CLIPPING': 'gradient_clipping',
+            'MAX_GRAD_NORM': 'max_grad_norm',
+            'FP16': 'fp16',
+            'DATALOADER_NUM_WORKERS': 'num_workers'
         }
         
         for env_key, field_name in field_mapping.items():
             if env_key in env_dict:
                 value = env_dict[env_key]
-                if field_name in ['learning_rate', 'weight_decay', 'gradient_clipping']:
+                if field_name in ['learning_rate', 'weight_decay', 'gradient_clipping', 'max_grad_norm']:
                     config[field_name] = float(value)
+                elif field_name in ['fp16']:
+                    config[field_name] = value.lower() in ('true', '1', 'yes')
                 else:
                     config[field_name] = int(value)
         
