@@ -66,8 +66,8 @@ class BERTTrainer:
         self.val_losses = []
         self.learning_rates = []
         
-        # Mixed precision
-        self.scaler = torch.cuda.amp.GradScaler() if hasattr(config, 'fp16') and config.fp16 else None
+        # Mixed precision (using new torch.amp API)
+        self.scaler = torch.amp.GradScaler('cuda') if hasattr(config, 'fp16') and config.fp16 and torch.cuda.is_available() else None
     
     def train_epoch(self):
         """Train for one epoch"""
@@ -84,7 +84,7 @@ class BERTTrainer:
             labels = batch.get('labels', None)
             
             if self.scaler:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = self.model(**batch)
                     
                     # Compute loss manually with stability measures if labels exist
@@ -197,7 +197,7 @@ class BERTTrainer:
                         for k, v in batch.items()}
                 
                 if self.scaler:
-                    with torch.cuda.amp.autocast():
+                    with torch.amp.autocast('cuda'):
                         outputs = self.model(**batch)
                 else:
                     outputs = self.model(**batch)
