@@ -118,7 +118,6 @@ dmypy.json
 *.ckpt
 *.pt
 *.pth
-models/
 checkpoints/
 logs/
 tensorboard_logs/
