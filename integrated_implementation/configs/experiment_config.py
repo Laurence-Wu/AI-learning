@@ -69,6 +69,9 @@ class ExperimentConfig(BaseConfig):
     wandb_entity: Optional[str] = None
     wandb_tags: Optional[List[str]] = None
     
+    # CUDA optimizations (RTX 4070 specific)
+    cuda_optimizations: Optional[Dict[str, Any]] = None
+    
     # Evaluation configuration
     evaluation: Optional[Dict[str, Any]] = None
     
