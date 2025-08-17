@@ -42,7 +42,8 @@ class BERTTrainer:
         scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
         config: Any,
         device: torch.device,
-        experiment_dir: Path = None
+        experiment_dir: Path = None,
+        use_fp16: Optional[bool] = None  # Override config.fp16 if specified
     ):
         self.model = model
         self.train_loader = train_loader
@@ -67,7 +68,13 @@ class BERTTrainer:
         self.learning_rates = []
         
         # Mixed precision (using new torch.amp API)
-        self.scaler = torch.amp.GradScaler('cuda') if hasattr(config, 'fp16') and config.fp16 and torch.cuda.is_available() else None
+        # Allow override of FP16 setting for CLM compatibility
+        if use_fp16 is not None:
+            use_mixed_precision = use_fp16
+        else:
+            use_mixed_precision = hasattr(config, 'fp16') and config.fp16
+        
+        self.scaler = torch.amp.GradScaler('cuda') if use_mixed_precision and torch.cuda.is_available() else None
     
     def train_epoch(self):
         """Train for one epoch"""

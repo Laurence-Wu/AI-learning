@@ -230,26 +230,19 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     
     scheduler = get_scheduler(optimizer, config, num_training_steps)
     
-    # Workaround for cuDNN Frontend error with CLM + FP16
-    # Create a modified config for CLM to disable FP16
-    if objective == "clm" and hasattr(config, 'fp16') and config.fp16:
-        import copy
-        clm_config = copy.deepcopy(config)
-        clm_config.fp16 = False
-        print("Note: Disabled FP16 for CLM to avoid cuDNN compatibility issues")
-        trainer_config = clm_config
-    else:
-        trainer_config = config
+    # Create trainer with FP16 disabled for CLM to avoid cuDNN issues
+    if objective == "clm":
+        print("Note: Using FP32 for CLM training (cuDNN compatibility)")
     
-    # Create trainer
     trainer = BERTTrainer(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
         scheduler=scheduler,
-        config=trainer_config,
-        device=device
+        config=config,
+        device=device,
+        use_fp16=False if objective == "clm" else None  # Override for CLM
     )
     
     # Train model
