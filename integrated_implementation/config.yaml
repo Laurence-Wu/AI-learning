@@ -34,7 +34,7 @@ model:
 training:
   batch_size: 8             # Increased from 2 to utilize GPU memory
   learning_rate: 0.0001     # Increased from 1e-5 for faster convergence
-  num_epochs: 10            # Increased for more comprehensive comparison
+  num_epochs: 400            # Increased for more comprehensive comparison
   warmup_steps: 200         # Increased proportionally
   gradient_accumulation_steps: 2  # Reduced since batch_size increased
   max_grad_norm: 1.0        # Increased from 0.5 for better gradient flow
