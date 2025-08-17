@@ -156,6 +156,23 @@ class ExperimentConfig(BaseConfig):
         """Get MLM probability from data config"""
         return self.data.mlm_probability if self.data else 0.15
     
+    @property
+    def data_scale(self) -> str:
+        """Get data scale setting"""
+        return getattr(self, '_data_scale', 'small')
+    
+    @property
+    def use_streaming_data(self) -> bool:
+        """Get streaming data flag"""
+        return getattr(self, '_use_streaming_data', False)
+    
+    @property
+    def scheduler_type(self) -> str:
+        """Get scheduler type from training config"""
+        if self.training and hasattr(self.training, 'scheduler'):
+            return getattr(self.training.scheduler, 'type', 'warmup_cosine')
+        return 'warmup_cosine'
+    
     def _validate(self):
         """Validate configuration consistency"""
         super()._validate()

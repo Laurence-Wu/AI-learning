@@ -26,11 +26,14 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from transformers import BertTokenizer, BertConfig
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from configs.experiment_config import load_config
-from src.data.mlm_patterns import BERTMLMDataset, get_dataloader
-from src.data.mlm_patterns import MLMConfig
-from src.data.clm_patterns import CLMDataset, get_clm_dataloader
+from src.data.dataloader import load_and_prepare_data, create_dataloaders
 from src.models.bert_models import create_bert_model, create_clm_model
 from src.training.trainer import BERTTrainer
 from src.training.optimizer import get_optimizer
@@ -92,6 +95,12 @@ def apply_env_overrides(config):
     config.device = os.getenv('DEVICE', 'auto')
     config.debug = os.getenv('DEBUG', 'false').lower() == 'true'
     
+    # Data scale and streaming settings
+    config._data_scale = os.getenv('DATA_SCALE', 'small')
+    config._use_streaming_data = os.getenv('USE_STREAMING_DATA', 'false').lower() == 'true'
+    
+    logger.info(f"Configuration applied: scale={config.data_scale}, streaming={config.use_streaming_data}")
+    
     return config
 
 
@@ -109,29 +118,7 @@ def load_tokenizer(config):
     return BertTokenizer.from_pretrained("bert-base-uncased")
 
 
-def load_and_prepare_data(config):
-    """Load and prepare training data"""
-    
-    # Load training data
-    data_file = config.data.training_data_file if config.data else 'training_data.txt'
-    if Path(data_file).exists():
-        with open(data_file, 'r', encoding='utf-8') as f:
-            texts = [line.strip() for line in f if line.strip()]
-    else:
-        # Sample data
-        texts = [
-            "The quick brown fox jumps over the lazy dog.",
-            "Machine learning is transforming the world of artificial intelligence.",
-            "Natural language processing enables computers to understand human language.",
-            "Deep learning models require large amounts of data for training."
-        ] * 50  # Repeat for more training data
-    
-    # Simple split
-    split_idx = int(0.8 * len(texts))
-    train_texts = texts[:split_idx]
-    val_texts = texts[split_idx:]
-    
-    return train_texts, val_texts
+# Data loading function is now imported from src.data.dataloader
 
 
 def create_bert_config(config):
@@ -154,12 +141,19 @@ def create_bert_config(config):
 
 def train_single_model(attention_type: str, objective: str, train_texts: List[str], 
                       val_texts: List[str], tokenizer, config) -> TrainingResult:
-    """Train a single model configuration"""
+    """Train a single model configuration optimized for 8GB GPU"""
     
     print(f"\n=== Training {attention_type.upper()} + {objective.upper()} ===")
+    print(f"8GB GPU Memory Optimization: ENABLED")
     
     start_time = time.time()
     device = get_device(config.device)
+    
+    # Clear GPU cache before training
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        initial_memory = torch.cuda.memory_allocated() / 1024**3
+        print(f"Initial GPU memory: {initial_memory:.2f} GB")
     
     # Create BERT config
     bert_config = create_bert_config(config)
@@ -172,24 +166,24 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     
     model = model.to(device)
     
-    # Create datasets
-    if objective == "mlm":
-        mlm_config = MLMConfig(mlm_probability=config.mlm_probability)
-        train_dataset = BERTMLMDataset(train_texts, tokenizer, 
-                                     max_length=config.max_seq_length,
-                                     mlm_config=mlm_config)
-        val_dataset = BERTMLMDataset(val_texts, tokenizer,
-                                   max_length=config.max_seq_length,
-                                   mlm_config=mlm_config)
-        train_loader = get_dataloader(train_dataset, batch_size=config.batch_size, shuffle=True)
-        val_loader = get_dataloader(val_dataset, batch_size=config.batch_size, shuffle=False)
-    else:  # clm
-        train_dataset = CLMDataset(train_texts, tokenizer,
-                                 max_length=config.max_seq_length)
-        val_dataset = CLMDataset(val_texts, tokenizer,
-                               max_length=config.max_seq_length)
-        train_loader = get_clm_dataloader(train_dataset, batch_size=config.batch_size, shuffle=True)
-        val_loader = get_clm_dataloader(val_dataset, batch_size=config.batch_size, shuffle=False)
+    # Monitor GPU memory after model loading
+    if torch.cuda.is_available():
+        model_memory = torch.cuda.memory_allocated() / 1024**3
+        print(f"GPU memory after model load: {model_memory:.2f} GB")
+        
+        # Enable gradient checkpointing for memory efficiency
+        if hasattr(model, 'gradient_checkpointing_enable'):
+            model.gradient_checkpointing_enable()
+            print("Gradient checkpointing enabled for memory efficiency")
+    
+    # Create dataloaders using the dataloader module
+    train_loader, val_loader = create_dataloaders(
+        objective=objective,
+        train_texts=train_texts,
+        val_texts=val_texts,
+        tokenizer=tokenizer,
+        config=config
+    )
     
     # Create optimizer and scheduler
     optimizer = get_optimizer(model, config)
