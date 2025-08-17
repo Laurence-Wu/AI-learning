@@ -28,7 +28,7 @@ sys.path.insert(0, str(project_root / "src"))
 from transformers import BertTokenizer, BertConfig
 
 from configs.experiment_config import load_config
-from src.data.dataset import BERTMLMDataset, get_dataloader
+from src.data.mlm_patterns import BERTMLMDataset, get_dataloader
 from src.data.mlm_patterns import MLMConfig
 from src.data.clm_patterns import CLMDataset, get_clm_dataloader
 from src.models.model_factory import create_bert_model
