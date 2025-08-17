@@ -59,20 +59,8 @@ class BERTMLMDataset(Dataset):
         input_ids = encoding['input_ids'].squeeze()
         attention_mask = encoding['attention_mask'].squeeze()
         
-        # CRITICAL DEBUG: Print before MLM masking
-        if idx == 0:  # Only print for first item to avoid spam
-            print(f"[MLM DEBUG] Input IDs shape: {input_ids.shape}")
-            print(f"[MLM DEBUG] Raw input IDs: {input_ids[:10]}")  # First 10 tokens
-            print(f"[MLM DEBUG] MLM probability: {self.mlm_config.mlm_probability}")
-        
         # Create MLM targets
         input_ids_mlm, labels = self._apply_mlm_masking(input_ids.clone())
-        
-        # CRITICAL DEBUG: Print after MLM masking
-        if idx == 0:
-            print(f"[MLM DEBUG] Labels after masking: {labels[:10]}")  # First 10 labels
-            print(f"[MLM DEBUG] Labels unique: {torch.unique(labels)}")
-            print(f"[MLM DEBUG] Masked token count: {(labels != -100).sum().item()}")
         
         return {
             'input_ids': input_ids_mlm,
@@ -82,7 +70,6 @@ class BERTMLMDataset(Dataset):
     
     def _apply_mlm_masking(self, input_ids: torch.Tensor) -> tuple:
         """Apply MLM masking based on strategy"""
-        print(f"[MLM DEBUG] _apply_mlm_masking called with input shape: {input_ids.shape}")
         labels = input_ids.clone()
         
         # Don't mask special tokens
