@@ -189,7 +189,16 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     
     # Create optimizer and scheduler
     optimizer = get_optimizer(model, config)
-    scheduler = get_scheduler(optimizer, config)
+    
+    # Calculate training steps for scheduler
+    batch_size = int(os.getenv('BATCH_SIZE', '16'))
+    num_epochs = int(os.getenv('NUM_EPOCHS', '10'))
+    gradient_accumulation_steps = int(os.getenv('GRADIENT_ACCUMULATION_STEPS', '1'))
+    
+    steps_per_epoch = len(train_dataset) // (batch_size * gradient_accumulation_steps)
+    num_training_steps = steps_per_epoch * num_epochs
+    
+    scheduler = get_scheduler(optimizer, config, num_training_steps)
     
     # Create trainer
     trainer = BERTTrainer(
