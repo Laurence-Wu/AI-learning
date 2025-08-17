@@ -139,6 +139,10 @@ datasets/
 *.tar
 *.rar
 
+# But allow source code in src/data/ directory
+!src/data/
+!src/data/*.py
+
 # Large files
 *.bin
 *.dat
