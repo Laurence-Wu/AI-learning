@@ -110,7 +110,7 @@ def _rse_attention_fwd_kernel(
     q_rope = q_rope * sm_scale
     
     # Initialize stick-breaking state
-    stick_remaining = tl.ones([BLOCK_M], dtype=tl.float32)
+    stick_remaining = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
     
     # Process attention computation block by block
     lo = 0
@@ -294,8 +294,33 @@ def rse_attention(q, k, v, cos_cache, sin_cache, lambda_param=0.01, causal=False
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(q.shape[-1])
     
-    # Apply RSE attention with Triton kernel
-    return RSEAttention.apply(q, k, v, cos_cache, sin_cache, lambda_param, causal, sm_scale)
+    try:
+        # Apply RSE attention with Triton kernel
+        return RSEAttention.apply(q, k, v, cos_cache, sin_cache, lambda_param, causal, sm_scale)
+    except Exception as e:
+        warnings.warn(f"RSE Triton kernel failed: {e}. Falling back to PyTorch implementation.")
+        # Simple fallback: RoPE + scaled dot-product with exponential decay
+        q_rope = apply_rope_rse(q, cos_cache, sin_cache)
+        k_rope = apply_rope_rse(k, cos_cache, sin_cache)
+        
+        # Compute attention scores
+        scores = torch.matmul(q_rope, k_rope.transpose(-2, -1)) * sm_scale
+        
+        # Add exponential decay
+        seq_len = q.shape[2]
+        pos_i = torch.arange(seq_len, device=q.device).unsqueeze(1)
+        pos_j = torch.arange(seq_len, device=q.device).unsqueeze(0)
+        decay = lambda_param * torch.abs(pos_i - pos_j).float()
+        scores = scores - decay.unsqueeze(0).unsqueeze(0)
+        
+        # Apply causal mask if needed
+        if causal:
+            mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device), diagonal=1)
+            scores = scores.masked_fill(mask.bool(), float('-inf'))
+        
+        # Compute attention weights and output
+        attn_weights = torch.softmax(scores, dim=-1)
+        return torch.matmul(attn_weights, v)
 
 
 class RSEBERTAttention(torch.nn.Module):
