@@ -80,20 +80,56 @@ class BERTTrainer:
             batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                     for k, v in batch.items()}
             
-            # Forward pass
+            # Forward pass with custom loss computation for stability
+            labels = batch.get('labels', None)
+            
             if self.scaler:
                 with torch.cuda.amp.autocast():
                     outputs = self.model(**batch)
-                    loss = outputs.loss / self.config.gradient_accumulation_steps
+                    
+                    # Compute loss manually with stability measures if labels exist
+                    if labels is not None and hasattr(outputs, 'logits'):
+                        logits = torch.clamp(outputs.logits, min=-10.0, max=10.0)
+                        # Compute cross-entropy loss with label smoothing for stability
+                        loss_fct = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+                        loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+                        outputs.loss = loss
+                    else:
+                        loss = outputs.loss
+                    
+                    loss = loss / self.config.gradient_accumulation_steps
             else:
                 outputs = self.model(**batch)
-                loss = outputs.loss / self.config.gradient_accumulation_steps
+                
+                # Compute loss manually with stability measures if labels exist
+                if labels is not None and hasattr(outputs, 'logits'):
+                    logits = torch.clamp(outputs.logits, min=-10.0, max=10.0)
+                    # Compute cross-entropy loss with label smoothing for stability
+                    loss_fct = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+                    loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+                    outputs.loss = loss
+                else:
+                    loss = outputs.loss
+                
+                loss = loss / self.config.gradient_accumulation_steps
             
-            # Check for NaN loss
+            # Check for NaN loss with detailed debugging
             if torch.isnan(loss) or torch.isinf(loss):
-                logger.error(f"NaN/Inf loss detected at batch {batch_idx}! Loss: {loss.item()}")
-                logger.error(f"Model outputs: {outputs}")
-                # Skip this batch
+                logger.error(f"NaN/Inf loss detected at batch {batch_idx}! Loss: {loss}")
+                
+                # Debug information about logits and labels
+                if hasattr(outputs, 'logits'):
+                    logger.error(f"Logits stats: min={outputs.logits.min():.4f}, max={outputs.logits.max():.4f}, mean={outputs.logits.mean():.4f}")
+                    logger.error(f"Logits contain NaN: {torch.isnan(outputs.logits).any()}")
+                    logger.error(f"Logits contain Inf: {torch.isinf(outputs.logits).any()}")
+                
+                if labels is not None:
+                    logger.error(f"Labels stats: min={labels.min()}, max={labels.max()}")
+                    logger.error(f"Labels unique values count: {len(torch.unique(labels))}")
+                    logger.error(f"Labels contain invalid indices: {(labels >= outputs.logits.size(-1)).any()}")
+                
+                # Skip this batch and zero gradients
+                self.optimizer.zero_grad()
                 continue
             
             # Backward pass
