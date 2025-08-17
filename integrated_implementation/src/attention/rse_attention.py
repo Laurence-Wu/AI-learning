@@ -294,11 +294,15 @@ def rse_attention(q, k, v, cos_cache, sin_cache, lambda_param=0.01, causal=False
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(q.shape[-1])
     
-    try:
-        # Apply RSE attention with Triton kernel
-        return RSEAttention.apply(q, k, v, cos_cache, sin_cache, lambda_param, causal, sm_scale)
-    except Exception as e:
-        warnings.warn(f"RSE Triton kernel failed: {e}. Falling back to PyTorch implementation.")
+    # Temporarily disable Triton kernel to debug the tl.ones error
+    # try:
+    #     # Apply RSE attention with Triton kernel
+    #     return RSEAttention.apply(q, k, v, cos_cache, sin_cache, lambda_param, causal, sm_scale)
+    # except Exception as e:
+    #     warnings.warn(f"RSE Triton kernel failed: {e}. Falling back to PyTorch implementation.")
+    
+    # Use PyTorch fallback for now
+    if True:
         # Simple fallback: RoPE + scaled dot-product with exponential decay
         q_rope = apply_rope_rse(q, cos_cache, sin_cache)
         k_rope = apply_rope_rse(k, cos_cache, sin_cache)
