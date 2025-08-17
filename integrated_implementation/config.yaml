@@ -30,16 +30,16 @@ model:
   attention_dropout: 0.1
   hidden_dropout: 0.1
 
-# Training Configuration (Stable with simple attention)
+# Training Configuration (Balanced for original attention mechanisms)
 training:
   batch_size: 2
-  learning_rate: 0.00001  # 1e-5 - Conservative but reasonable
-  num_epochs: 3  # Short test run
+  learning_rate: 0.00001  # 1e-5 - Conservative for stability
+  num_epochs: 5  # Reasonable test run
   warmup_steps: 100
   gradient_accumulation_steps: 4
-  max_grad_norm: 1.0  # Normal clipping
+  max_grad_norm: 0.5  # Conservative clipping for Triton kernels
   weight_decay: 0.01
-  gradient_clipping: 1.0
+  gradient_clipping: 0.5
   
   # Optimizer Configuration
   optimizer:
