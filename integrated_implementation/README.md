@@ -343,7 +343,9 @@ MIXED_PRECISION=true
 
 ### Programmatic Configuration
 ```python
-from src.config import ExperimentConfig, TrainingConfig, ModelConfig
+from configs.experiment_config import ExperimentConfig
+from configs.training_config import TrainingConfig
+from configs.model_config import ModelConfig
 
 config = ExperimentConfig(
     experiment_name="custom_experiment",

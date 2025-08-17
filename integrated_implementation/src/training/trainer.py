@@ -119,7 +119,7 @@ class BERTTrainer:
                 # Logging
                 if self.global_step % self.config.logging_steps == 0:
                     current_lr = self.scheduler.get_last_lr()[0] if self.scheduler else self.config.learning_rate
-                    logger.info(f"Step {self.global_step}: Loss = {loss.item():.4f}, LR = {current_lr:.6f}")
+                    # Minimal logging - only epoch progress
                     self.train_losses.append(loss.item() * self.config.gradient_accumulation_steps)
                     self.learning_rates.append(current_lr)
             
@@ -172,26 +172,26 @@ class BERTTrainer:
             'epoch': self.current_epoch,
             'best_val_loss': self.best_val_loss
         }, checkpoint_path)
-        logger.info(f"Checkpoint saved to {checkpoint_path}")
+        # Checkpoint saved silently
     
     def train(self) -> TrainingResults:
         """Full training loop"""
-        logger.info(f"Starting training for {self.config.num_epochs} epochs")
+        print(f"Starting training for {self.config.num_epochs} epochs")
         start_time = time.time()
         
         for epoch in range(self.config.num_epochs):
             self.current_epoch = epoch
-            logger.info(f"Epoch {epoch + 1}/{self.config.num_epochs}")
+            print(f"Epoch {epoch + 1}/{self.config.num_epochs}")
             
             # Train
             avg_train_loss = self.train_epoch()
-            logger.info(f"Average training loss: {avg_train_loss:.4f}")
+            print(f"Training loss: {avg_train_loss:.4f}")
             
             # Evaluate
             if self.val_loader and (epoch + 1) % max(1, self.config.eval_steps // len(self.train_loader)) == 0:
                 val_loss = self.evaluate()
                 self.val_losses.append(val_loss)
-                logger.info(f"Validation loss: {val_loss:.4f}")
+                print(f"Validation loss: {val_loss:.4f}")
             
             # Save checkpoint
             if (epoch + 1) % max(1, self.config.save_steps // len(self.train_loader)) == 0:

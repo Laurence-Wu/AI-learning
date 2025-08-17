@@ -16,7 +16,11 @@ from .device import get_device, setup_device, get_memory_info
 # Define basic missing functions inline for compatibility
 def setup_logging():
     import logging
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s',
+        handlers=[logging.StreamHandler()]
+    )
     return logging.getLogger()
 
 def set_seed(seed: int = 42):
