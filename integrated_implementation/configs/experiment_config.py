@@ -88,7 +88,7 @@ class ExperimentConfig(BaseConfig):
         
         # Set default attention algorithms
         if self.attention_algorithms is None:
-            self.attention_algorithms = ["standard", "rope", "exposb", "absolute"]
+            self.attention_algorithms = ["standard", "rope", "exposb", "rse", "absolute"]
         
         # Set default training objectives
         if self.training_objectives is None:
@@ -181,7 +181,7 @@ class ExperimentConfig(BaseConfig):
         super()._validate()
         
         # Validate attention algorithms
-        valid_algorithms = {"standard", "rope", "exposb", "absolute"}
+        valid_algorithms = {"standard", "rope", "exposb", "rse", "absolute"}
         if self.attention_algorithms is not None:
             for algo in self.attention_algorithms:
                 if algo not in valid_algorithms:
