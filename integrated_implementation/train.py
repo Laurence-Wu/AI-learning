@@ -65,7 +65,7 @@ def parse_args():
     parser.add_argument(
         "--config", "-c", 
         type=str, 
-        default="config.env",
+        default="config.yaml",
         help="Path to configuration file"
     )
     
@@ -78,32 +78,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def apply_env_overrides(config):
-    """Apply environment variable overrides to config"""
-    
-    # Training objectives and attention mechanisms
-    objectives = os.getenv('OBJECTIVES', 'both')
-    if objectives == 'both':
-        config.training_objectives = ["mlm", "clm"]
-    else:
-        config.training_objectives = objectives.split(',')
-    
-    attention_list = os.getenv('ATTENTION_ALGORITHMS', 'standard,rope')
-    config.attention_algorithms = attention_list.split(',')
-    
-    # Basic experiment settings
-    config.experiment_name = os.getenv('EXPERIMENT_NAME', 'bert_comparison')
-    config.output_dir = os.getenv('OUTPUT_DIR', './outputs')
-    config.device = os.getenv('DEVICE', 'auto')
-    config.debug = os.getenv('DEBUG', 'false').lower() == 'true'
-    
-    # Data scale and streaming settings
-    config._data_scale = os.getenv('DATA_SCALE', 'small')
-    config._use_streaming_data = os.getenv('USE_STREAMING_DATA', 'false').lower() == 'true'
-    
-    logger.info(f"Configuration applied: scale={config.data_scale}, streaming={config.use_streaming_data}")
-    
-    return config
 
 
 def load_tokenizer(config):
@@ -205,6 +179,18 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
         model = create_clm_model(bert_config, attention_type)
     
     model = model.to(device)
+    
+    # Initialize weights properly to prevent NaN
+    def init_weights(module):
+        if isinstance(module, torch.nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight, gain=0.1)  # Smaller gain for stability
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, torch.nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    
+    model.apply(init_weights)
+    print("Applied stable weight initialization")
     
     # Monitor GPU memory after model loading
     if torch.cuda.is_available():
@@ -327,7 +313,9 @@ def main():
     # Load configuration
     try:
         config = load_config(args.config)
-        config = apply_env_overrides(config)
+        logger.info(f"Attention mechanisms to train: {config.attention_algorithms}")
+        logger.info(f"Training objectives: {config.training_objectives}")
+        logger.info(f"Configuration applied: scale={config.data_scale}, streaming={config.use_streaming_data}")
     except Exception as e:
         print(f"Failed to load configuration: {e}")
         return

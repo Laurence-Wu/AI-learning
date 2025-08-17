@@ -220,6 +220,9 @@ class ExperimentConfig(BaseConfig):
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     key, value = line.split('=', 1)
+                    # Remove inline comments
+                    if '#' in value:
+                        value = value.split('#')[0]
                     env_vars[key.strip()] = value.strip()
         
         # Parse configuration from environment variables
@@ -231,13 +234,35 @@ class ExperimentConfig(BaseConfig):
                 algo.strip() for algo in env_vars['ATTENTION_ALGORITHMS'].split(',')
             ]
         
+        # Parse training objectives
+        if 'OBJECTIVES' in env_vars:
+            objectives = env_vars['OBJECTIVES'].strip().lower()
+            if objectives == 'both':
+                config_dict['training_objectives'] = ['mlm', 'clm']
+            else:
+                config_dict['training_objectives'] = [obj.strip() for obj in objectives.split(',')]
+        
         # Parse simple fields
         simple_fields = {
             'experiment_name': 'EXPERIMENT_NAME',
             'output_dir': 'OUTPUT_DIR', 
             'seed': 'SEED',
             'device': 'DEVICE',
-            'log_level': 'LOG_LEVEL'
+            'log_level': 'LOG_LEVEL',
+            'description': 'DESCRIPTION'
+        }
+        
+        # Parse boolean fields
+        boolean_fields = {
+            'use_wandb': 'USE_WANDB',
+            'mixed_precision': 'MIXED_PRECISION',
+            'deterministic': 'DETERMINISTIC',
+            'save_config': 'SAVE_CONFIG',
+            'monitor_gpu': 'MONITOR_GPU',
+            'monitor_memory': 'MONITOR_MEMORY',
+            'profile_performance': 'PROFILE',
+            'gradient_checkpointing': 'GRADIENT_CHECKPOINTING',
+            'memory_efficient_attention': 'MEMORY_EFFICIENT_ATTENTION'
         }
         
         for field, env_key in simple_fields.items():
@@ -246,9 +271,17 @@ class ExperimentConfig(BaseConfig):
                 # Type conversion
                 if field == 'seed':
                     value = int(value)
-                elif field in ['use_wandb', 'mixed_precision', 'deterministic']:
-                    value = value.lower() in ('true', '1', 'yes', 'on')
                 config_dict[field] = value
+        
+        for field, env_key in boolean_fields.items():
+            if env_key in env_vars:
+                config_dict[field] = env_vars[env_key].lower() in ('true', '1', 'yes', 'on')
+        
+        # Handle data scale and streaming settings (legacy support)
+        if 'DATA_SCALE' in env_vars:
+            config_dict['_data_scale'] = env_vars['DATA_SCALE']
+        if 'USE_STREAMING_DATA' in env_vars:
+            config_dict['_use_streaming_data'] = env_vars['USE_STREAMING_DATA'].lower() in ('true', '1', 'yes', 'on')
         
         # Create sub-configurations from environment
         config_dict['training'] = TrainingConfig.from_env_dict(env_vars)

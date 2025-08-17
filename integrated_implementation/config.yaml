@@ -1,0 +1,111 @@
+# BERT Comparison Training Configuration
+# ========================================
+# Updated with GPU-compatible settings for CUDA/cuDNN compatibility
+#
+# GPU COMPATIBILITY NOTES:
+# - Reduced model size (192 hidden, 3 layers) to avoid memory issues
+# - Disabled FP16 to prevent cuDNN frontend errors
+# - Conservative memory usage (60% instead of 90%)
+# - Smaller batch size (2) and sequence length (128)
+# - CLM training now supports all attention mechanisms with causal masking
+
+# Experiment Configuration
+experiment_name: "bert_comparison"
+description: "Comprehensive BERT attention mechanism comparison with GPU optimization"
+version: "1.0.0"
+tags: ["bert", "attention", "comparison", "gpu-optimized"]
+
+# Training Objectives and Attention Mechanisms
+training_objectives: ["mlm", "clm"]
+attention_algorithms: ["standard", "rope", "exposb", "absolute"]
+
+# Model Configuration (8GB GPU RAM optimized)
+model:
+  vocab_size: 30522
+  hidden_size: 192
+  num_hidden_layers: 3
+  num_attention_heads: 3
+  intermediate_size: 768
+  max_position_embeddings: 256
+  attention_dropout: 0.1
+  hidden_dropout: 0.1
+
+# Training Configuration (8GB GPU RAM optimized - stability focused)
+training:
+  batch_size: 2
+  learning_rate: 0.00005  # 5e-5 - Reduced from 2e-4 for stability
+  num_epochs: 10
+  warmup_steps: 50
+  gradient_accumulation_steps: 4
+  max_grad_norm: 0.5  # Reduced from 1.0 for better stability
+  weight_decay: 0.01
+  gradient_clipping: 0.5
+  
+  # Optimizer Configuration
+  optimizer:
+    type: "adamw"
+    betas: [0.9, 0.999]
+    eps: 1e-8
+    weight_decay: 0.01
+  
+  # Scheduler Configuration
+  scheduler:
+    type: "cosine"
+    num_warmup_steps: 100
+  
+  # Training Options (GPU-compatible settings)
+  fp16: false
+  num_workers: 2
+  pin_memory: true
+  dataloader_drop_last: true
+  logging_steps: 10
+  eval_steps: 50
+  save_steps: 500
+
+# Data Configuration
+data:
+  max_seq_length: 128
+  mlm_probability: 0.15
+  training_data_file: "training_data.txt"
+  validation_split: 0.2
+  min_chars: 20
+  max_chars: 1000
+  deduplicate: true
+  truncation: true
+  padding: "max_length"
+  
+  # MLM Strategy Configuration
+  mlm_strategy: "standard"
+  
+  # CLM Configuration
+  clm_strategy: "standard"
+
+# Output Configuration
+output_dir: "./outputs"
+save_config: true
+
+# Logging Configuration
+log_level: "INFO"
+
+# Memory and Performance (8GB GPU optimized)
+gradient_checkpointing: true
+mixed_precision: false
+memory_efficient_attention: true
+
+# Device Configuration
+device: "cuda"
+
+# Reproducibility
+seed: 42
+deterministic: true
+
+# Monitoring
+monitor_gpu: true
+monitor_memory: true
+profile_performance: false
+
+# Experiment tracking
+use_wandb: false
+wandb_project: "bert-attention-comparison"
+
+# Additional configuration can be added here as needed

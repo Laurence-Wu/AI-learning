@@ -89,6 +89,13 @@ class BERTTrainer:
                 outputs = self.model(**batch)
                 loss = outputs.loss / self.config.gradient_accumulation_steps
             
+            # Check for NaN loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                logger.error(f"NaN/Inf loss detected at batch {batch_idx}! Loss: {loss.item()}")
+                logger.error(f"Model outputs: {outputs}")
+                # Skip this batch
+                continue
+            
             # Backward pass
             if self.scaler:
                 self.scaler.scale(loss).backward()
@@ -97,11 +104,22 @@ class BERTTrainer:
             
             # Gradient accumulation
             if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
-                # Gradient clipping
+                # Gradient clipping with monitoring
                 if hasattr(self.config, 'max_grad_norm'):
                     if self.scaler:
                         self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.max_grad_norm)
+                    
+                    # Monitor gradient norms before clipping
+                    grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.max_grad_norm)
+                    
+                    # Warn about large gradients
+                    if grad_norm > 10.0:
+                        logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
+                    
+                    # Check for NaN gradients
+                    if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                        logger.error(f"NaN/Inf gradient norm detected: {grad_norm}")
+                        continue
                 
                 # Optimizer step
                 if self.scaler:
