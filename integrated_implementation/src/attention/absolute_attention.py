@@ -306,3 +306,31 @@ class AbsoluteBERTAttention(torch.nn.Module):
             outputs = outputs + (past_key_value,)
         
         return outputs
+
+
+def absolute_attention(q, k, v, causal=False, sm_scale=None):
+    """
+    Absolute position attention function for use in CLM models
+    
+    Args:
+        q: Query tensor [batch, heads, seq_len, head_dim]
+        k: Key tensor [batch, heads, seq_len, head_dim]
+        v: Value tensor [batch, heads, seq_len, head_dim]
+        causal: Whether to apply causal mask
+        sm_scale: Softmax scale factor
+    
+    Returns:
+        Attention output [batch, heads, seq_len, head_dim]
+    """
+    if sm_scale is None:
+        sm_scale = 1.0 / math.sqrt(q.shape[-1])
+    
+    # Use PyTorch's efficient implementation with absolute position handling
+    # For absolute attention, we rely on the position embeddings added at the model level
+    return torch.nn.functional.scaled_dot_product_attention(
+        q, k, v, 
+        attn_mask=None, 
+        dropout_p=0.0, 
+        is_causal=causal,
+        scale=sm_scale
+    )

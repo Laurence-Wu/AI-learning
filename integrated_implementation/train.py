@@ -270,37 +270,53 @@ def plot_comparison_results(results: List[TrainingResult], output_dir: Path):
     
     # Plot MLM results
     plt.subplot(2, 2, 1)
-    for result in mlm_results:
-        plt.plot(result.train_losses, label=f"{result.attention_type}")
+    if mlm_results:
+        for result in mlm_results:
+            plt.plot(result.train_losses, label=f"{result.attention_type}")
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, 'No MLM results\n(training failed)', 
+                ha='center', va='center', transform=plt.gca().transAxes)
     plt.title("MLM Training Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.legend()
     
     plt.subplot(2, 2, 2)
-    for result in mlm_results:
-        plt.plot(result.val_losses, label=f"{result.attention_type}")
+    if mlm_results:
+        for result in mlm_results:
+            plt.plot(result.val_losses, label=f"{result.attention_type}")
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, 'No MLM results\n(training failed)', 
+                ha='center', va='center', transform=plt.gca().transAxes)
     plt.title("MLM Validation Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.legend()
     
     # Plot CLM results
     plt.subplot(2, 2, 3)
-    for result in clm_results:
-        plt.plot(result.train_losses, label=f"{result.attention_type}")
+    if clm_results:
+        for result in clm_results:
+            plt.plot(result.train_losses, label=f"{result.attention_type}")
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, 'No CLM results\n(training failed)', 
+                ha='center', va='center', transform=plt.gca().transAxes)
     plt.title("CLM Training Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.legend()
     
     plt.subplot(2, 2, 4)
-    for result in clm_results:
-        plt.plot(result.val_losses, label=f"{result.attention_type}")
+    if clm_results:
+        for result in clm_results:
+            plt.plot(result.val_losses, label=f"{result.attention_type}")
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, 'No CLM results\n(training failed)', 
+                ha='center', va='center', transform=plt.gca().transAxes)
     plt.title("CLM Validation Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.legend()
     
     plt.tight_layout()
     plot_path = output_dir / "mlm_clm_comparison.png"
