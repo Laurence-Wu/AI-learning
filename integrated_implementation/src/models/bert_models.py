@@ -107,7 +107,7 @@ def create_bert_model(config: BertConfig, attention_type: str = "standard") -> M
     
     Args:
         config: BERT configuration
-        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "absolute")
+        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "rse", "absolute")
         
     Returns:
         Modified BERT model with custom attention
@@ -115,7 +115,7 @@ def create_bert_model(config: BertConfig, attention_type: str = "standard") -> M
     logger.info(f"Creating BERT model with {attention_type} attention")
     
     # Validate attention type
-    valid_types = ["standard", "rope", "exposb", "absolute"]
+    valid_types = ["standard", "rope", "exposb", "rse", "absolute"]
     if attention_type not in valid_types:
         raise ValueError(f"Invalid attention type: {attention_type}. Valid types: {valid_types}")
     
@@ -142,7 +142,7 @@ def create_clm_model(config: BertConfig, attention_type: str = "standard"):
     
     Args:
         config: BERT configuration (will be adapted for CLM)
-        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "absolute")
+        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "rse", "absolute")
         
     Returns:
         Modified CLM model with custom attention

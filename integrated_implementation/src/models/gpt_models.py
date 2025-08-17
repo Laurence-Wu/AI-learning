@@ -17,6 +17,7 @@ from ..attention import (
     StandardBERTAttention,
     RoPEBERTAttention, 
     ExpoSBBERTAttention,
+    RSEBERTAttention,
     AbsoluteBERTAttention,
     get_attention_class
 )
@@ -295,7 +296,7 @@ def create_gpt_model(config, attention_type: str = "standard") -> ModifiedGPTMod
     
     Args:
         config: GPTConfig or BertConfig (will be converted)
-        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "absolute")
+        attention_type: Type of attention mechanism ("standard", "rope", "exposb", "rse", "absolute")
         
     Returns:
         Modified GPT model with custom attention
@@ -309,7 +310,7 @@ def create_gpt_model(config, attention_type: str = "standard") -> ModifiedGPTMod
         gpt_config = config
     
     # Validate attention type
-    valid_types = ["standard", "rope", "exposb", "absolute"]
+    valid_types = ["standard", "rope", "exposb", "rse", "absolute"]
     if attention_type not in valid_types:
         raise ValueError(f"Invalid attention type: {attention_type}. Valid types: {valid_types}")
     
