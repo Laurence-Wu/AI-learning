@@ -1,45 +1,45 @@
-# BERT Comparison Training Configuration
-# ========================================
-# Updated with GPU-compatible settings for CUDA/cuDNN compatibility
+# BERT Comparison Training Configuration - RTX 4070 8GB Optimized
+# =================================================================
+# Optimized for RTX 4070 8GB VRAM with CUDA compute capability 8.9
 #
-# GPU COMPATIBILITY NOTES:
-# - Reduced model size (192 hidden, 3 layers) to avoid memory issues
-# - Disabled FP16 to prevent cuDNN frontend errors
-# - Conservative memory usage (60% instead of 90%)
-# - Smaller batch size (2) and sequence length (128)
-# - CLM training now supports all attention mechanisms with causal masking
+# RTX 4070 OPTIMIZATION NOTES:
+# - Increased model size to better utilize 8GB VRAM (384 hidden, 6 layers)
+# - Enabled mixed precision for RTX 4070's efficient FP16 Tensor Cores
+# - Optimized batch size and sequence length for memory efficiency
+# - Tuned for maximum utilization while maintaining stability
+# - Fixed MLM masking ensures stable training across all attention mechanisms
 
 # Experiment Configuration
-experiment_name: "bert_comparison"
-description: "Comprehensive BERT attention mechanism comparison with GPU optimization"
-version: "1.0.0"
-tags: ["bert", "attention", "comparison", "gpu-optimized"]
+experiment_name: "bert_attention_comparison_4070"
+description: "BERT attention mechanism comparison optimized for RTX 4070 8GB"
+version: "2.0.0"
+tags: ["bert", "attention", "comparison", "rtx-4070", "optimized"]
 
 # Training Objectives and Attention Mechanisms
 training_objectives: ["mlm", "clm"]
 attention_algorithms: ["standard", "rope", "exposb", "absolute"]
 
-# Model Configuration (8GB GPU RAM optimized)
+# Model Configuration (RTX 4070 8GB optimized)
 model:
   vocab_size: 30522
-  hidden_size: 192
-  num_hidden_layers: 3
-  num_attention_heads: 3
-  intermediate_size: 768
-  max_position_embeddings: 256
+  hidden_size: 384          # Increased from 192 to better utilize GPU
+  num_hidden_layers: 6      # Increased from 3 for more meaningful comparison
+  num_attention_heads: 6    # Increased from 3 (matches hidden_size/64)
+  intermediate_size: 1536   # Increased from 768 (4x hidden_size standard)
+  max_position_embeddings: 512  # Increased from 256 for longer sequences
   attention_dropout: 0.1
   hidden_dropout: 0.1
 
-# Training Configuration (Balanced for original attention mechanisms)
+# Training Configuration (RTX 4070 optimized)
 training:
-  batch_size: 2
-  learning_rate: 0.00001  # 1e-5 - Conservative for stability
-  num_epochs: 5  # Reasonable test run
-  warmup_steps: 100
-  gradient_accumulation_steps: 4
-  max_grad_norm: 0.5  # Conservative clipping for Triton kernels
+  batch_size: 8             # Increased from 2 to utilize GPU memory
+  learning_rate: 0.0001     # Increased from 1e-5 for faster convergence
+  num_epochs: 10            # Increased for more comprehensive comparison
+  warmup_steps: 200         # Increased proportionally
+  gradient_accumulation_steps: 2  # Reduced since batch_size increased
+  max_grad_norm: 1.0        # Increased from 0.5 for better gradient flow
   weight_decay: 0.01
-  gradient_clipping: 0.5
+  gradient_clipping: 1.0    # Increased from 0.5
   
   # Optimizer Configuration
   optimizer:
@@ -51,25 +51,25 @@ training:
   # Scheduler Configuration
   scheduler:
     type: "cosine"
-    num_warmup_steps: 50
+    num_warmup_steps: 100   # Adjusted for new training length
   
-  # Training Options (GPU-compatible settings)
-  fp16: false
-  num_workers: 2
+  # Training Options (RTX 4070 optimized)
+  fp16: true              # Enabled for RTX 4070 Tensor Cores
+  num_workers: 4          # Increased from 2 for better CPU utilization
   pin_memory: true
   dataloader_drop_last: true
-  logging_steps: 10
-  eval_steps: 50
-  save_steps: 500
+  logging_steps: 20       # Increased from 10 to reduce overhead
+  eval_steps: 100         # Increased from 50
+  save_steps: 1000        # Increased from 500
 
 # Data Configuration
 data:
-  max_seq_length: 128
+  max_seq_length: 256       # Increased from 128 to utilize longer contexts
   mlm_probability: 0.15
   training_data_file: "training_data.txt"
   validation_split: 0.2
   min_chars: 20
-  max_chars: 1000
+  max_chars: 2000           # Increased from 1000 for richer data
   deduplicate: true
   truncation: true
   padding: "max_length"
@@ -87,9 +87,9 @@ save_config: true
 # Logging Configuration
 log_level: "INFO"
 
-# Memory and Performance (8GB GPU optimized)
-gradient_checkpointing: true
-mixed_precision: false
+# Memory and Performance (RTX 4070 optimized)
+gradient_checkpointing: false    # Disabled for RTX 4070 - we have enough memory
+mixed_precision: true           # Enabled for RTX 4070 Tensor Cores
 memory_efficient_attention: true
 
 # Device Configuration
@@ -102,10 +102,15 @@ deterministic: true
 # Monitoring
 monitor_gpu: true
 monitor_memory: true
-profile_performance: false
+profile_performance: true        # Enabled for performance analysis
 
 # Experiment tracking
 use_wandb: false
-wandb_project: "bert-attention-comparison"
+wandb_project: "bert-attention-comparison-rtx4070"
 
-# Additional configuration can be added here as needed
+# RTX 4070 Specific Optimizations
+cuda_optimizations:
+  enable_flash_attention: true   # Use Flash Attention if available
+  compile_model: true           # Enable torch.compile for RTX 4070
+  use_channels_last: true       # Memory layout optimization
+  allow_tf32: true              # Enable TF32 for faster training
