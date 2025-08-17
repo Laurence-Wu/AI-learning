@@ -18,8 +18,5 @@ Features:
 __version__ = "1.0.0"
 __author__ = "AI Learning Project"
 
-from .training import *
-from .attention import *
-from .utils import *
-from .data import *
-from .models import *
+# Lazy imports to avoid loading everything at once
+# Individual modules should be imported directly when needed

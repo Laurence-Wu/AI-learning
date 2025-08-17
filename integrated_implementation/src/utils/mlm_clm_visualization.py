@@ -11,15 +11,64 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import pandas as pd
+from scipy.ndimage import gaussian_filter1d
+from scipy.signal import savgol_filter
 
 
-def plot_mlm_vs_clm_comparison(results: Dict[str, Any], save_path: str):
+def smooth_data(data, method='gaussian', window_size=5, sigma=1.0):
+    """
+    Apply smoothing to data using various methods
+    
+    Args:
+        data: Input data array
+        method: Smoothing method ('gaussian', 'savgol', 'moving_avg', 'ewma')
+        window_size: Window size for smoothing
+        sigma: Standard deviation for Gaussian filter
+    
+    Returns:
+        Smoothed data array
+    """
+    if len(data) < window_size:
+        return data
+    
+    if method == 'gaussian':
+        return gaussian_filter1d(data, sigma=sigma)
+    elif method == 'savgol':
+        # Ensure window_size is odd
+        window = window_size if window_size % 2 == 1 else window_size + 1
+        # Ensure window doesn't exceed data length
+        window = min(window, len(data))
+        if window < 4:
+            return data
+        return savgol_filter(data, window, min(3, window - 1))
+    elif method == 'moving_avg':
+        # Simple moving average
+        kernel = np.ones(window_size) / window_size
+        # Pad data to handle boundaries
+        padded = np.pad(data, (window_size//2, window_size//2), mode='edge')
+        return np.convolve(padded, kernel, mode='valid')[:len(data)]
+    elif method == 'ewma':
+        # Exponential weighted moving average
+        df = pd.Series(data)
+        return df.ewm(span=window_size, adjust=False).mean().values
+    else:
+        return data
+
+
+def plot_mlm_vs_clm_comparison(results: Dict[str, Any], save_path: str, smoothing_config: Optional[Dict] = None):
     """
     Create comprehensive MLM vs CLM comparison plots
     
     Args:
         results: Dictionary mapping variant_name (attention_objective) to TrainingResults
         save_path: Path to save the plot
+        smoothing_config: Dictionary with smoothing configuration:
+            {
+                'method': 'gaussian' | 'savgol' | 'moving_avg' | 'ewma',
+                'window_size': int (default 5),
+                'sigma': float (for gaussian, default 1.0),
+                'apply_to_val': bool (whether to smooth validation data, default True)
+            }
         
     Expected format:
     {
@@ -97,6 +146,11 @@ def plot_mlm_vs_clm_comparison(results: Dict[str, Any], save_path: str):
     
     # Plot 2: Validation Loss Comparison
     ax2 = fig.add_subplot(gs[0, 2:4])
+    
+    # Default smoothing config
+    if smoothing_config is None:
+        smoothing_config = {'method': 'gaussian', 'window_size': 5, 'sigma': 1.5, 'apply_to_val': True}
+    
     for attention_type in sorted(attention_types):
         if attention_type in structured_results:
             # MLM validation loss
@@ -104,20 +158,60 @@ def plot_mlm_vs_clm_comparison(results: Dict[str, Any], save_path: str):
                 mlm_result = structured_results[attention_type]['mlm']
                 if hasattr(mlm_result, 'val_losses') and mlm_result.val_losses:
                     eval_steps = np.arange(len(mlm_result.val_losses))
-                    ax2.plot(eval_steps, mlm_result.val_losses,
-                            label=f'{attention_type.upper()} MLM',
-                            color=mlm_colors.get(attention_type, 'gray'),
-                            marker='o', linewidth=2, markersize=6, linestyle='-')
+                    val_losses = mlm_result.val_losses
+                    
+                    # Apply smoothing if configured
+                    if smoothing_config.get('apply_to_val', True):
+                        val_losses_smooth = smooth_data(
+                            val_losses,
+                            method=smoothing_config.get('method', 'gaussian'),
+                            window_size=smoothing_config.get('window_size', 5),
+                            sigma=smoothing_config.get('sigma', 1.5)
+                        )
+                        # Plot original data with low alpha
+                        ax2.plot(eval_steps, val_losses,
+                                color=mlm_colors.get(attention_type, 'gray'),
+                                alpha=0.2, linewidth=1, linestyle='-')
+                        # Plot smoothed data
+                        ax2.plot(eval_steps, val_losses_smooth,
+                                label=f'{attention_type.upper()} MLM',
+                                color=mlm_colors.get(attention_type, 'gray'),
+                                linewidth=2.5, linestyle='-')
+                    else:
+                        ax2.plot(eval_steps, val_losses,
+                                label=f'{attention_type.upper()} MLM',
+                                color=mlm_colors.get(attention_type, 'gray'),
+                                marker='o', linewidth=2, markersize=6, linestyle='-')
             
             # CLM validation loss
             if 'clm' in structured_results[attention_type]:
                 clm_result = structured_results[attention_type]['clm']
                 if hasattr(clm_result, 'val_losses') and clm_result.val_losses:
                     eval_steps = np.arange(len(clm_result.val_losses))
-                    ax2.plot(eval_steps, clm_result.val_losses,
-                            label=f'{attention_type.upper()} CLM',
-                            color=clm_colors.get(attention_type, 'lightgray'),
-                            marker='s', linewidth=2, markersize=6, linestyle='--')
+                    val_losses = clm_result.val_losses
+                    
+                    # Apply smoothing if configured
+                    if smoothing_config.get('apply_to_val', True):
+                        val_losses_smooth = smooth_data(
+                            val_losses,
+                            method=smoothing_config.get('method', 'gaussian'),
+                            window_size=smoothing_config.get('window_size', 5),
+                            sigma=smoothing_config.get('sigma', 1.5)
+                        )
+                        # Plot original data with low alpha
+                        ax2.plot(eval_steps, val_losses,
+                                color=clm_colors.get(attention_type, 'lightgray'),
+                                alpha=0.2, linewidth=1, linestyle='--')
+                        # Plot smoothed data
+                        ax2.plot(eval_steps, val_losses_smooth,
+                                label=f'{attention_type.upper()} CLM',
+                                color=clm_colors.get(attention_type, 'lightgray'),
+                                linewidth=2.5, linestyle='--')
+                    else:
+                        ax2.plot(eval_steps, val_losses,
+                                label=f'{attention_type.upper()} CLM',
+                                color=clm_colors.get(attention_type, 'lightgray'),
+                                marker='s', linewidth=2, markersize=6, linestyle='--')
     
     ax2.set_xlabel('Evaluation Steps', fontsize=12)
     ax2.set_ylabel('Validation Loss', fontsize=12)
