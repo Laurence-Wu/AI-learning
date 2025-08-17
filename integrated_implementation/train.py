@@ -183,11 +183,15 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     # Initialize weights properly to prevent NaN
     def init_weights(module):
         if isinstance(module, torch.nn.Linear):
-            torch.nn.init.xavier_uniform_(module.weight, gain=0.1)  # Smaller gain for stability
+            # Use smaller std for more stable initialization
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, torch.nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif isinstance(module, torch.nn.LayerNorm):
+            torch.nn.init.ones_(module.weight)
+            torch.nn.init.zeros_(module.bias)
     
     model.apply(init_weights)
     print("Applied stable weight initialization")

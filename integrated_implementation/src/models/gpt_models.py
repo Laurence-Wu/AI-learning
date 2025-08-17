@@ -8,10 +8,10 @@ Implements proper causal language modeling with custom attention mechanisms.
 
 import torch
 import torch.nn as nn
+import math
 from transformers import GPT2Config, GPT2LMHeadModel
 from typing import Optional, Dict, Any
 import logging
-import math
 
 from ..attention import (
     StandardBERTAttention,
@@ -109,48 +109,66 @@ class CausalAttentionAdapter(nn.Module):
         super().__init__()
         self.attention = attention_layer
         self.attention_type = attention_type
-        
-    def forward(self, hidden_states, past_key_value=None, cache_position=None, 
+    
+    def forward(self, hidden_states, past_key_value=None, cache_position=None,
                 attention_mask=None, head_mask=None, output_attentions=False, **kwargs):
         """
         Forward pass with causal masking
         """
         batch_size, seq_len, hidden_size = hidden_states.shape
         
+        # Handle different attribute naming conventions
+        if hasattr(self.attention, 'q_proj'):
+            # Standard/RoPE/ExpoSB attention modules
+            q_proj = self.attention.q_proj
+            k_proj = self.attention.k_proj
+            v_proj = self.attention.v_proj
+            num_heads = self.attention.num_heads
+            head_dim = self.attention.head_dim
+        else:
+            # Absolute attention module (uses different naming)
+            q_proj = self.attention.query
+            k_proj = self.attention.key
+            v_proj = self.attention.value
+            num_heads = self.attention.num_attention_heads
+            head_dim = self.attention.attention_head_size
+        
         # Get attention projections
-        q = self.attention.q_proj(hidden_states).view(
-            batch_size, seq_len, self.attention.num_heads, self.attention.head_dim
+        q = q_proj(hidden_states).view(
+            batch_size, seq_len, num_heads, head_dim
         ).transpose(1, 2)
         
-        k = self.attention.k_proj(hidden_states).view(
-            batch_size, seq_len, self.attention.num_heads, self.attention.head_dim
+        k = k_proj(hidden_states).view(
+            batch_size, seq_len, num_heads, head_dim
         ).transpose(1, 2)
         
-        v = self.attention.v_proj(hidden_states).view(
-            batch_size, seq_len, self.attention.num_heads, self.attention.head_dim
+        v = v_proj(hidden_states).view(
+            batch_size, seq_len, num_heads, head_dim
         ).transpose(1, 2)
         
         # Apply causal attention based on attention type
+        scale = getattr(self.attention, 'scale', 1.0 / math.sqrt(head_dim))
+        
         if self.attention_type == "standard":
             attn_output = torch.nn.functional.scaled_dot_product_attention(
-                q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True, scale=self.attention.scale
+                q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True, scale=scale
             )
         elif self.attention_type == "rope":
             # Use RoPE with causal masking
             from ..attention.rope_attention import rope_attention
-            attn_output = rope_attention(q, k, v, causal=True, sm_scale=self.attention.scale)
+            attn_output = rope_attention(q, k, v, causal=True, sm_scale=scale)
         elif self.attention_type == "exposb":
             # Use ExpoSB with causal masking
             from ..attention.exposb_attention import exposb_attention
-            attn_output = exposb_attention(q, k, v, causal=True, sm_scale=self.attention.scale)
+            attn_output = exposb_attention(q, k, v, causal=True, sm_scale=scale)
         elif self.attention_type == "absolute":
             # Use Absolute with causal masking
             from ..attention.absolute_attention import absolute_attention
-            attn_output = absolute_attention(q, k, v, causal=True, sm_scale=self.attention.scale)
+            attn_output = absolute_attention(q, k, v, causal=True, sm_scale=scale)
         else:
             # Fallback to PyTorch's causal attention
             attn_output = torch.nn.functional.scaled_dot_product_attention(
-                q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True, scale=self.attention.scale
+                q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True, scale=scale
             )
         
         # Apply head mask if provided
@@ -159,8 +177,17 @@ class CausalAttentionAdapter(nn.Module):
         
         # Reshape and project output
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
-        output = self.attention.out_proj(attn_output)
-        output = self.attention.dropout(output)
+        
+        # Handle different output projection naming
+        if hasattr(self.attention, 'out_proj'):
+            output = self.attention.out_proj(attn_output)
+        else:
+            # For absolute attention, there's no separate output projection
+            output = attn_output
+        
+        # Apply dropout
+        dropout_layer = getattr(self.attention, 'dropout', torch.nn.Identity())
+        output = dropout_layer(output)
         
         # Return tuple to match GPT2 attention interface
         outputs = (output, None)  # (hidden_states, past_key_value)
