@@ -107,17 +107,19 @@ class ExperimentConfig(BaseConfig):
         
         # Validate attention algorithms
         valid_algorithms = {"standard", "rope", "exposb", "absolute"}
-        for algo in self.attention_algorithms:
-            if algo not in valid_algorithms:
-                raise ValueError(f"Unknown attention algorithm: {algo}. "
-                               f"Valid options: {valid_algorithms}")
+        if self.attention_algorithms is not None:
+            for algo in self.attention_algorithms:
+                if algo not in valid_algorithms:
+                    raise ValueError(f"Unknown attention algorithm: {algo}. "
+                                   f"Valid options: {valid_algorithms}")
         
         # Validate training objectives
         valid_objectives = {"mlm", "clm", "both"}
-        for obj in self.training_objectives:
-            if obj not in valid_objectives:
-                raise ValueError(f"Unknown training objective: {obj}. "
-                               f"Valid options: {valid_objectives}")
+        if self.training_objectives is not None:
+            for obj in self.training_objectives:
+                if obj not in valid_objectives:
+                    raise ValueError(f"Unknown training objective: {obj}. "
+                                   f"Valid options: {valid_objectives}")
         
         # Validate device
         if self.device not in {"auto", "cpu", "cuda", "mps"}:
