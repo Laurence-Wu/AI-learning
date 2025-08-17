@@ -230,10 +230,7 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     
     scheduler = get_scheduler(optimizer, config, num_training_steps)
     
-    # Create trainer with FP16 disabled for CLM to avoid cuDNN issues
-    if objective == "clm":
-        print("Note: Using FP32 for CLM training (cuDNN compatibility)")
-    
+    # Create trainer
     trainer = BERTTrainer(
         model=model,
         train_loader=train_loader,
@@ -241,8 +238,7 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
         optimizer=optimizer,
         scheduler=scheduler,
         config=config,
-        device=device,
-        use_fp16=False if objective == "clm" else None  # Override for CLM
+        device=device
     )
     
     # Train model

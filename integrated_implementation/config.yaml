@@ -54,7 +54,7 @@ training:
     num_warmup_steps: 100   # Adjusted for new training length
   
   # Training Options (RTX 4070 optimized)
-  fp16: true              # Enabled for RTX 4070 Tensor Cores
+  fp16: false             # Disabled to avoid cuDNN compatibility issues
   num_workers: 4          # Increased from 2 for better CPU utilization
   pin_memory: true
   dataloader_drop_last: true
@@ -89,7 +89,7 @@ log_level: "INFO"
 
 # Memory and Performance (RTX 4070 optimized)
 gradient_checkpointing: false    # Disabled for RTX 4070 - we have enough memory
-mixed_precision: true           # Enabled for RTX 4070 Tensor Cores
+mixed_precision: false          # Disabled to avoid cuDNN compatibility issues
 memory_efficient_attention: true
 
 # Device Configuration
