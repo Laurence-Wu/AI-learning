@@ -34,8 +34,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from configs.experiment_config import load_config
-from src.data.mlm_patterns import BERTMLMDataset, get_dataloader
-from src.data.mlm_patterns import MLMConfig
+from src.data.mlm_patterns import BERTMLMDataset, get_dataloader, MLMConfig
 from src.data.clm_patterns import CLMDataset, get_clm_dataloader
 from src.models.bert_models import create_bert_model, create_clm_model
 from src.training.trainer import BERTTrainer
@@ -234,7 +233,9 @@ def train_single_model(attention_type: str, objective: str, train_texts: List[st
     num_epochs = config.num_epochs
     gradient_accumulation_steps = config.gradient_accumulation_steps
     
-    steps_per_epoch = len(train_dataset) // (batch_size * gradient_accumulation_steps)
+    # Get number of samples from train_loader dataset
+    num_train_samples = len(train_loader.dataset)
+    steps_per_epoch = num_train_samples // (batch_size * gradient_accumulation_steps)
     num_training_steps = steps_per_epoch * num_epochs
     
     scheduler = get_scheduler(optimizer, config, num_training_steps)
